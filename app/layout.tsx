@@ -14,9 +14,46 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OfficerOS",
-  description: "Military pay calculator, BAH lookup, and financial tools for service members.",
+  metadataBase: new URL("https://officeros.com"),
+  title: {
+    default: "OfficerOS",
+    template: "%s | OfficerOS",
+  },
+  description:
+    "Military pay and planning tools for base pay, BAH, BAS, budgeting, and military life toolkits.",
+  keywords: [
+    "military pay",
+    "BAH calculator",
+    "BAS",
+    "base pay",
+    "military budgeting",
+    "officer pay",
+    "enlisted pay",
+    "TSP",
+    "PCS planning",
+  ],
+  applicationName: "OfficerOS",
+  authors: [{ name: "Nicholas Parker" }],
+  creator: "Nicholas Parker",
+  publisher: "OfficerOS",
+  openGraph: {
+    title: "OfficerOS",
+    description:
+      "Military pay and planning tools for base pay, BAH, BAS, budgeting, and military life toolkits.",
+    url: "https://officeros.com",
+    siteName: "OfficerOS",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OfficerOS",
+    description:
+      "Military pay and planning tools for base pay, BAH, BAS, budgeting, and military life toolkits.",
+  },
 };
+//Important
+
+// If your real deployed URL is not https://officeros.com, change these three places before saving:
 
 export default function RootLayout({
   children,
@@ -59,6 +96,9 @@ export default function RootLayout({
               <Link href="/contact" className="hover:underline">
                 Contact
               </Link>
+              <Link href="/privacy" className="hover:text-gray-900">
+                Privacy
+              </Link>
             </nav>
           </header>
 
@@ -76,14 +116,7 @@ export default function RootLayout({
                 <Link href="/contact" className="hover:underline">
                   Contact
                 </Link>
-                <a
-                  href="https://buymeacoffee.com/YOURNAME"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:underline"
-                >
-                  Buy us a coffee
-                </a>
+               
               </div>
             </div>
           </footer>

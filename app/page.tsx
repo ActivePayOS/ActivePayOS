@@ -4,8 +4,11 @@ export default function Home() {
       <section className="rounded-3xl border bg-white p-10 shadow-sm">
         <h1 className="text-4xl font-semibold tracking-tight">OfficerOS</h1>
         <p className="mt-4 max-w-2xl text-gray-600">
-          Military pay & benefits tools — accurate, visual, and simple. Built for active duty.
-        </p>
+        Military pay & benefits tools — accurate, visual, and simple. Built for active duty.
+        <br />
+        <br />
+        Here to help. 
+      </p>
 
         <div className="mt-8 flex flex-wrap gap-3">
           <a className="rounded-xl bg-black px-5 py-3 text-sm font-medium text-white" href="/pay">

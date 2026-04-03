@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OfficerOS
 
-## Getting Started
+OfficerOS is a simple military pay and planning website built to help service members better understand their compensation.
 
-First, run the development server:
+It focuses on making common pay topics easier to use and less confusing by offering clear tools for military base pay, BAH, BAS, and budgeting. The goal is not to replace official systems, but to give users a cleaner way to estimate, plan, and learn.
+
+## What OfficerOS includes
+
+- Military pay calculator
+- BAH lookup by ZIP code
+- BAS reference
+- Annual and monthly pay views
+- Budget spreadsheet export
+- Military-focused planning toolkits
+- Plain-English explanations of common pay terms
+
+## Who it is for
+
+OfficerOS is built for:
+
+- ROTC cadets and midshipmen preparing to commission
+- newly commissioned officers
+- junior enlisted service members
+- military members planning PCS moves or budgeting changes
+- anyone who wants a simpler way to understand military pay
+
+## Main idea
+
+Military pay information exists, but it is often spread across multiple official websites and not always easy to understand quickly.
+
+OfficerOS brings key pay inputs into one place and presents them in a more usable format for education and planning.
+
+## Current features
+
+### Pay calculator
+The pay calculator is the core feature of the site. It is designed to help users estimate:
+
+- base pay
+- Basic Allowance for Housing (BAH)
+- Basic Allowance for Subsistence (BAS)
+- estimated monthly total compensation
+- estimated annual total compensation
+
+### Budget export
+Users can export a budget spreadsheet based on their current pay inputs and planning assumptions.
+
+### Toolkits
+OfficerOS also includes simple toolkit pages for common military life situations, such as:
+
+- just commissioned
+- junior enlisted
+- first PCS
+- just married
+- deployment
+- TSP and retirement planning
+
+## Data sources
+
+OfficerOS uses public reference data and planning assumptions, including military pay tables and allowance information.
+
+Examples include:
+
+- DFAS pay tables
+- official BAH information
+- official allowances references
+
+These tools are built for education and planning. Users should always verify important decisions using their LES, DFAS, and official military sources.
+
+## Important disclaimer
+
+OfficerOS is an educational and planning tool.
+
+It is **not** an official Department of Defense, DFAS, or U.S. military website. It does **not** provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependency status, deductions, special pays, government quarters, meal plans, and other service-specific factors.
+
+Always verify important decisions with your Leave and Earnings Statement (LES), DFAS, and official military guidance.
+
+## Tech stack
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+## Local development
+
+Clone the repo:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone https://github.com/nickparker52/OfficerOS.git
+cd OfficerOS

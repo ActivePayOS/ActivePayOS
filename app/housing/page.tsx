@@ -28,8 +28,12 @@ export default function HousingPage() {
             <li>Get a simple Comfortable / Tight / Risky rating</li>
           </ul>
 
-          <div className="mt-5 text-sm font-medium">Open tool →</div>
-        </Link>
+            <div className="mt-5">
+              <span className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-medium text-white">
+                Open tool
+                <span className="ml-2">→</span>
+              </span>
+            </div>        </Link>
 
         <Link
           href="/housing/rent-vs-buy"
@@ -47,7 +51,12 @@ export default function HousingPage() {
             <li>See whether buying likely makes sense for your timeline</li>
           </ul>
 
-          <div className="mt-5 text-sm font-medium">Open tool →</div>
+          <div className="mt-5">
+          <span className="inline-flex items-center rounded-full bg-black px-4 py-2 text-sm font-medium text-white">
+            Open tool
+            <span className="ml-2">→</span>
+          </span>
+        </div>
         </Link>
       </section>
 

@@ -31,21 +31,14 @@ export default function ContactPage() {
         </ul>
       </div>
 
-      <div className="rounded-2xl border bg-gray-50 p-5">
+   {/*   <div className="rounded-2xl border bg-gray-50 p-5">
         <h2 className="text-lg font-semibold">Support OfficerOS</h2>
         <p className="mt-2 text-sm text-gray-600">
           OfficerOS is free to use. If it helps you and you want to support the project,
           you can buy us a coffee.
         </p>
-        <a
-          href="https://buymeacoffee.com/YOURNAME"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-block rounded-full border bg-white px-4 py-2 text-sm font-medium hover:bg-gray-100"
-        >
-          Buy us a coffee
-        </a>
-      </div>
+       
+      </div> */}
     </main>
   );
 }

@@ -1,0 +1,10 @@
+{
+  "year": 2026,
+  "effectiveDate": "2026-01-01",
+  "source": "DFAS",
+  "rates": {
+    "officers": 328.48,
+    "enlisted": 476.95,
+    "basII": 953.90
+  }
+}

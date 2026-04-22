@@ -1,0 +1,35 @@
+﻿name: Update Pay Tables
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # every Monday 09:00 UTC (adjust later)
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: npm ci
+
+      - name: Update base pay
+        run: npm run update:basepay
+
+      - name: Validate
+        run: npm run validate:basepay
+
+      - name: Create PR if changes
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Update base pay tables"
+          title: "Update base pay tables"
+          body: "Automated update from DFAS sources."
+          branch: "auto/update-pay-tables"

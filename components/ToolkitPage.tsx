@@ -24,19 +24,17 @@ export default function ToolkitPage({ toolkit }: { toolkit: Toolkit }) {
     return keys;
   }, [toolkit]);
 
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-
-  // Load saved progress
-  useEffect(() => {
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
     try {
-      const raw = localStorage.getItem(storageKey(toolkit.slug));
-      if (!raw) return;
+      const raw = window.localStorage.getItem(storageKey(toolkit.slug));
+      if (!raw) return {};
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") setChecked(parsed);
+      return parsed && typeof parsed === "object" ? parsed : {};
     } catch {
-      // ignore
+      return {};
     }
-  }, [toolkit.slug]);
+  });
 
   // Save progress
   useEffect(() => {
@@ -83,54 +81,38 @@ export default function ToolkitPage({ toolkit }: { toolkit: Toolkit }) {
     }
 
     if (sec.type === "actions") {
-
-        // inside: if (sec.type === "actions") { ... }
-    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-    {sec.actions.map((a) => {
-        const isExternal = a.href.startsWith("http");
-        const CardInner = (
-        <>
-            <div className="font-semibold">{a.label}</div>
-            {a.note ? <div className="mt-1 text-sm text-gray-600">{a.note}</div> : null}
-            <div className="mt-2 text-sm">Open →</div>
-        </>
-        );
-
-        const className =
-        "rounded-2xl border bg-white p-4 shadow-sm hover:shadow transition";
-
-        return isExternal ? (
-        <a
-            key={a.href + a.label}
-            href={a.href}
-            target="_blank"
-            rel="noreferrer"
-            className={className}
-        >
-            {CardInner}
-        </a>
-        ) : (
-        <Link key={a.href + a.label} href={a.href} className={className}>
-            {CardInner}
-        </Link>
-        );
-    })}
-    </div>
       return (
         <section key={sec.title} className="rounded-3xl border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold">{sec.title}</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {sec.actions.map((a) => (
-              <Link
-                key={a.href + a.label}
-                href={a.href}
-                className="rounded-2xl border bg-white p-4 shadow-sm hover:shadow transition"
-              >
-                <div className="font-semibold">{a.label}</div>
-                {a.note ? <div className="mt-1 text-sm text-gray-600">{a.note}</div> : null}
-                <div className="mt-2 text-sm">Open →</div>
-              </Link>
-            ))}
+            {sec.actions.map((a) => {
+              const isExternal = a.href.startsWith("http");
+              const className =
+                "rounded-2xl border bg-white p-4 shadow-sm hover:shadow transition";
+              const cardInner = (
+                <>
+                  <div className="font-semibold">{a.label}</div>
+                  {a.note ? <div className="mt-1 text-sm text-gray-600">{a.note}</div> : null}
+                  <div className="mt-2 text-sm">Open -&gt;</div>
+                </>
+              );
+
+              return isExternal ? (
+                <a
+                  key={a.href + a.label}
+                  href={a.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={className}
+                >
+                  {cardInner}
+                </a>
+              ) : (
+                <Link key={a.href + a.label} href={a.href} className={className}>
+                  {cardInner}
+                </Link>
+              );
+            })}
           </div>
         </section>
       );
@@ -156,7 +138,7 @@ export default function ToolkitPage({ toolkit }: { toolkit: Toolkit }) {
                   ].join(" ")}
                   aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
                 >
-                  {isChecked ? "✓" : ""}
+                  {isChecked ? "" : ""}
                 </button>
                 <span className={["text-gray-700", isChecked ? "line-through opacity-70" : ""].join(" ")}>
                   {it}

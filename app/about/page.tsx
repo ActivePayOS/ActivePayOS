@@ -8,18 +8,18 @@ export default function AboutPage() {
       </p>
 
       <p>
-        We’re two lieutenants who started learning about military finances
+        We are two lieutenants who started learning about military finances
         the same way most people do: by trying to figure it out ourselves.
       </p>
 
       <p>
         How much money do I actually make? What happens if I have dependents?
-        What’s a good budgeting spreadsheet? What do all these numbers online
-        actually mean — and which ones are correct?
+        What is a good budgeting spreadsheet? What do all these numbers online
+        actually mean - and which ones are correct?
       </p>
 
       <p>
-        Very quickly we realized the problem: it’s confusing.
+        Very quickly we realized the problem: it is confusing.
       </p>
 
       <p>
@@ -28,7 +28,7 @@ export default function AboutPage() {
 
       <p>
         OfficerOS is a free tool designed to help service members understand the
-        basics of their finances — pay, housing allowances, budgeting,
+        basics of their finances - pay, housing allowances, budgeting,
         retirement, and the decisions that matter early in a career.
       </p>
 
@@ -43,15 +43,15 @@ export default function AboutPage() {
 
       <p>
         If OfficerOS helps you get organized, avoid a mistake, or feel more
-        confident about the numbers — then it’s doing its job.
+        confident about the numbers - then it is doing its job.
       </p>
 
       <p>
-        We’re glad you’re here.
+        We are glad you are here.
       </p>
 
       <p className="italic">
-        — Two lieutenants who decided to build the tool we wish we had.
+        - Two lieutenants who decided to build the tool we wish we had.
       </p>
 
       <p className="mt-6 text-xs text-gray-400">

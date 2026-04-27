@@ -23,7 +23,7 @@ export async function fetchHtmlWithFallback(urls) {
       const html = await res.text();
 
       if (html.length < 5000) {
-        throw new Error("HTML too short — likely blocked or error page");
+        throw new Error("HTML too short - likely blocked or error page");
       }
 
       return { html, sourceUrl: url };

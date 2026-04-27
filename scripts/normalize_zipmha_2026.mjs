@@ -8,7 +8,7 @@ const OUT = path.join(process.cwd(), "data", "bah", "normalized", `${YEAR}.zipmh
 
 function main() {
   if (!fs.existsSync(RAW)) {
-    throw new Error(`Missing ZIP→MHA raw file at: ${RAW}
+    throw new Error(`Missing ZIP->MHA raw file at: ${RAW}
 Put sorted_zipmha26.txt into data/bah/raw/`);
   }
 
@@ -40,7 +40,7 @@ Put sorted_zipmha26.txt into data/bah/raw/`);
     "utf8"
   );
 
-  console.log(`✅ Wrote ${OUT} with ${Object.keys(zipToMha).length} ZIPs`);
+  console.log(`[ok] Wrote ${OUT} with ${Object.keys(zipToMha).length} ZIPs`);
   console.log(`Example 02139 -> ${zipToMha["02139"] ?? "NOT FOUND"}`);
   console.log(`Example 22003 -> ${zipToMha["22003"] ?? "NOT FOUND"}`);
   console.log(`Example 90210 -> ${zipToMha["90210"] ?? "NOT FOUND"}`);

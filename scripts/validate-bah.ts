@@ -2,9 +2,17 @@ import zipMha from "../data/bah/normalized/2026.zipmha.json";
 import withRates from "../data/bah/normalized/2026.with.json";
 import withoutRates from "../data/bah/normalized/2026.without.json";
 
-const zipToMha = (zipMha as any).zipToMha as Record<string, string>;
-const withByMha = (withRates as any).ratesByMha as Record<string, any>;
-const withoutByMha = (withoutRates as any).ratesByMha as Record<string, any>;
+type BahRecord = {
+  rates?: Record<string, number>;
+};
+
+type BahDataset = {
+  ratesByMha: Record<string, BahRecord>;
+};
+
+const zipToMha = zipMha.zipToMha as Record<string, string>;
+const withByMha = (withRates as BahDataset).ratesByMha;
+const withoutByMha = (withoutRates as BahDataset).ratesByMha;
 
 console.log("ZIP count:", Object.keys(zipToMha).length);
 console.log("MHA count (with):", Object.keys(withByMha).length);
@@ -23,7 +31,7 @@ for (const z of testZips) {
 
 // Consistency check: any zip->mha that has no rate record?
 let missing = 0;
-for (const [zip, mha] of Object.entries(zipToMha)) {
+for (const mha of Object.values(zipToMha)) {
   if (!withByMha[mha] || !withoutByMha[mha]) missing++;
 }
 

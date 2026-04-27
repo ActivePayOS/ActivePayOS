@@ -32,7 +32,7 @@ jobs:
         run: npm run update:bas
 
       - name: Validate BAS
-        run: node -e "const d=require('./data/bas/bas.json'); if(!d?.latest?.year) process.exit(1);"
+        run: node -e "const d=require('./data/bas/2026.json'); if(d?.year !== 2026 || !d?.rates?.officers || !d?.rates?.enlisted) process.exit(1);"
 
       - name: Create PR if changes
         uses: peter-evans/create-pull-request@v6

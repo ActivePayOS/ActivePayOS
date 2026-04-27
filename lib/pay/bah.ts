@@ -8,6 +8,23 @@ type PayGrade =
   | "E-1" | "E-2" | "E-3" | "E-4" | "E-5" | "E-6" | "E-7" | "E-8" | "E-9"
   | "O-1E" | "O-2E" | "O-3E";
 
+type ZipMhaDataset = {
+  zipToMha: Record<string, string>;
+};
+
+type BahDataset = {
+  ratesByMha: Record<
+    string,
+    {
+      rates: Partial<Record<PayGrade, number>>;
+    }
+  >;
+};
+
+const zipMhaDataset = zipMha as ZipMhaDataset;
+const bahWithDataset = withRates as BahDataset;
+const bahWithoutDataset = withoutRates as BahDataset;
+
 function normalizeZip(input: string): string | null {
   const z = (input ?? "").trim();
   const m = z.match(/^(\d{5})(?:-\d{4})?$/);
@@ -19,7 +36,7 @@ function zipToMha(zipInput: string): string | null {
   if (!zip) return null;
 
   // zipMha.json = { year, generatedAt, zipToMha: { "02139": "MA120", ... } }
-  const mha = (zipMha as any)?.zipToMha?.[zip];
+  const mha = zipMhaDataset.zipToMha[zip];
   return typeof mha === "string" ? mha : null;
 }
 
@@ -37,8 +54,8 @@ export function getBahRate(
   // Not present in DTMO BAH tables, so treat as unsupported.
   if (mha.startsWith("XX")) return null;
 
-  const dataset: any = withDependents ? withRates : withoutRates;
-  const record = dataset?.ratesByMha?.[mha];
+  const dataset = withDependents ? bahWithDataset : bahWithoutDataset;
+  const record = dataset.ratesByMha[mha];
   if (!record) return null;
 
   const rate = record?.rates?.[grade];

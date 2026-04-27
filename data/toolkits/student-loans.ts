@@ -10,7 +10,7 @@ export const studentLoans: Toolkit = {
       title: "First Pass Checklist",
       items: [
         "List your loans (balance, rate, federal vs private).",
-        "If eligible, learn PSLF basics from the official source (don’t guess).",
+        "If eligible, learn PSLF basics from the official source (don't guess).",
         "High-interest private loans often deserve priority payoff.",
         "Use the OfficerOS budget export to pick a monthly payment you can sustain.",
       ],
@@ -20,9 +20,9 @@ export const studentLoans: Toolkit = {
       title: "Payoff vs Invest (Simple)",
       items: [
         "If the interest rate is very high: payoff usually wins.",
-        "If the interest rate is low and you’re investing long-term: investing may win.",
-        "Behavior matters: pick the option you’ll actually stick with.",
-        "If you’re unsure: start with consistency (auto-pay + small investing) and refine later.",
+        "If the interest rate is low and you're investing long-term: investing may win.",
+        "Behavior matters: pick the option you'll actually stick with.",
+        "If you're unsure: start with consistency (auto-pay + small investing) and refine later.",
       ],
     },
     {
@@ -30,7 +30,7 @@ export const studentLoans: Toolkit = {
       title: "OfficerOS Actions",
       actions: [
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Lock a payment you can sustain" },
-        { label: "TSP & Retirement", href: "/toolkits/retirement-tsp", note: "Don’t pause wealth-building blindly" },
+        { label: "TSP & Retirement", href: "/toolkits/retirement-tsp", note: "Don't pause wealth-building blindly" },
       ],
     },
     {
@@ -44,7 +44,7 @@ export const studentLoans: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "A mini-calculator: compare “extra $X/month to loans” vs “invest $X/month” over time.",
+      text: 'A mini-calculator: compare "extra $X/month to loans" vs "invest $X/month" over time.',
     },
   ],
 };

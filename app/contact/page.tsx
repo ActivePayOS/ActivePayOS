@@ -4,7 +4,7 @@ export default function ContactPage() {
       <div>
         <h1 className="text-3xl font-semibold">Contact OfficerOS</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Questions, bug reports, ideas, or feedback — send them our way.
+          Questions, bug reports, ideas, or feedback - send them our way.
         </p>
       </div>
 

@@ -1,11 +1,11 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import * as cheerio from "cheerio";
 import { fetchHtmlWithFallback } from "./lib/fetchHtml.mjs";
 
 const YEAR = 2026;
 
-// DFAS pages (authoritative) — may 403
+// DFAS pages (authoritative) - may 403
 const URLS = {
   CO: "https://www.dfas.mil/MilitaryMembers/payentitlements/Pay-Tables/Basic-Pay/CO/",
   CO_FE: "https://www.dfas.mil/MilitaryMembers/payentitlements/Pay-Tables/Basic-Pay/CO_FE/",
@@ -87,7 +87,7 @@ async function fetchHtml(url) {
   const { html, sourceUrl } = await fetchHtmlWithFallback(candidates);
 
   if (sourceUrl !== url) {
-    console.warn(`↪️  Fallback used: ${url} -> ${sourceUrl}`);
+    console.warn(`->  Fallback used: ${url} -> ${sourceUrl}`);
   }
 
   if (sourceUrl === NAVYCS_ALL) {
@@ -165,10 +165,10 @@ async function main() {
     }
 
     if (!tableHasAnyNumbers(table)) {
-      console.warn(`⚠️ ${key}: parsed 0 numeric values (blocked/layout change).`);
+      console.warn(`[warn] ${key}: parsed 0 numeric values (blocked/layout change).`);
     } else {
       const sample = gradesNeeded.find((g) => table[g].some((v) => typeof v === "number" && Number.isFinite(v)));
-      console.log(`✅ ${key} sample ${sample}:`, table[sample].slice(0, 6));
+      console.log(`[ok] ${key} sample ${sample}:`, table[sample].slice(0, 6));
     }
 
     out.tables[key] = table;
@@ -177,7 +177,7 @@ async function main() {
   // Hard fail if parsing looks wrong so CI doesn't publish junk
   const n = totalNumericCount(out.tables);
   if (n < 200) {
-    console.error(`❌ Base pay parse looks wrong (only ${n} numeric values). Failing so we don’t publish junk.`);
+    console.error(`[error] Base pay parse looks wrong (only ${n} numeric values). Failing so we don't publish junk.`);
     process.exit(1);
   }
 
@@ -185,10 +185,10 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `${YEAR}.json`);
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
-  console.log(`✅ Wrote ${outPath}`);
+  console.log(`[ok] Wrote ${outPath}`);
 }
 
 main().catch((e) => {
-  console.error("❌", e);
+  console.error("[error]", e);
   process.exit(1);
 });

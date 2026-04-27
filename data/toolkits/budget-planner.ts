@@ -11,9 +11,9 @@ export const budgetPlanner: Toolkit = {
       title: "How to Use It",
       items: [
         "Go to Pay Calculator and enter your details.",
-        "Click “Download Budget Sheet (.xlsx)”.",
-        "Only edit the blue cells—everything else updates automatically.",
-        "Use the “Start Here” targets to set housing/food/savings baselines.",
+        'Click "Download Budget Sheet (.xlsx)".',
+        "Only edit the blue cells-everything else updates automatically.",
+        'Use the "Start Here" targets to set housing/food/savings baselines.',
       ],
     },
     {
@@ -21,7 +21,7 @@ export const budgetPlanner: Toolkit = {
       title: "Rules That Keep You Safe",
       items: [
         "Housing (rent + utilities) should generally fit inside your BAH target.",
-        "Make savings automatic (small is fine—consistency wins).",
+        "Make savings automatic (small is fine-consistency wins).",
         "If you have high-interest debt, prioritize it before upgrades.",
         "Re-run the Pay Calculator whenever rank/YOS/ZIP changes.",
       ],

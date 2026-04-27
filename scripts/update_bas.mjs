@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { fetchHtmlWithFallback } from "./lib/fetchHtml.mjs";
 
@@ -66,7 +66,7 @@ async function main() {
   const latest = parseLatest(text);
 
   if (!latest) {
-    console.error("❌ Could not parse BAS table — source may be blocked or layout changed");
+    console.error("[error] Could not parse BAS table - source may be blocked or layout changed");
     process.exit(1);
   }
 
@@ -74,11 +74,11 @@ async function main() {
   try {
     assertReasonable(latest);
   } catch (e) {
-    console.error(`❌ BAS validation failed: ${e.message}`);
+    console.error(`[error] BAS validation failed: ${e.message}`);
     process.exit(1);
   }
 
-  // ✅ Runtime schema (matches your app)
+  // [ok] Runtime schema (matches your app)
   const out = {
     year: latest.year,
     effectiveDate: `${latest.year}-01-01`,
@@ -98,14 +98,14 @@ async function main() {
   const outPath = path.join(outDir, `${latest.year}.json`);
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
 
-  console.log(`✅ Wrote ${outPath}`);
+  console.log(`[ok] Wrote ${outPath}`);
   console.log("BAS:", out);
 }
 
 main().catch((e) => {
-  console.error("❌", e.message ?? e);
+  console.error("[error]", e.message ?? e);
   if (BEST_EFFORT) {
-    console.warn("⚠️ BEST_EFFORT=1 set — leaving existing BAS files untouched.");
+    console.warn("[warn] BEST_EFFORT=1 set - leaving existing BAS files untouched.");
     process.exit(0);
   }
   process.exit(1);

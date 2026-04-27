@@ -84,7 +84,7 @@ export default function ToolkitsPage() {
               <div className="text-xl font-semibold">{x.title}</div>
               <div className="mt-2 text-sm text-gray-600">{x.desc}</div>
               <div className="mt-4 text-sm font-medium text-gray-900">
-                <span className="group-hover:underline">Open</span> →
+                <span className="group-hover:underline">Open</span> -&gt;
               </div>
             </Link>
           ))}
@@ -103,7 +103,7 @@ export default function ToolkitsPage() {
               <div className="text-xl font-semibold">{x.title}</div>
               <div className="mt-2 text-sm text-gray-600">{x.desc}</div>
               <div className="mt-4 text-sm font-medium text-gray-900">
-                <span className="group-hover:underline">Open</span> →
+                <span className="group-hover:underline">Open</span> -&gt;
               </div>
             </Link>
           ))}

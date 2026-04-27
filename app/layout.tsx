@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://officeros.com"),
@@ -63,15 +52,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-gray-50 text-gray-900 antialiased`}
+        className="bg-gray-50 text-gray-900 antialiased"
       >
         <div className="mx-auto max-w-6xl px-6">
-          <header className="flex items-center justify-between py-6">
+          <header className="flex flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
             <Link href="/" className="text-xl font-semibold tracking-tight">
               OfficerOS
             </Link>
 
-            <nav className="flex items-center gap-6 text-sm font-medium">
+            <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium">
               <Link href="/" className="hover:underline">
                 Home
               </Link>
@@ -107,9 +96,9 @@ export default function RootLayout({
           <footer className="border-t py-8 text-xs text-gray-500">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                © {new Date().getFullYear()} OfficerOS. Not affiliated with the U.S. Department of Defense.
+                (c) {new Date().getFullYear()} OfficerOS. Not affiliated with the U.S. Department of Defense.
                 <br />
-                For educational purposes only — verify financial decisions with DFAS and official sources.
+                For educational purposes only - verify financial decisions with DFAS and official sources.
               </div>
 
               <div className="flex items-center gap-4">

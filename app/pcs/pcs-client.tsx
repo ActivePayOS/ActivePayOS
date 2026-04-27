@@ -57,11 +57,7 @@ function fmtUSD(v: number | null | undefined) {
         currency: "USD",
         maximumFractionDigits: 2,
       }).format(v)
-    : "—";
-}
-
-function fmtPct(v: number | null | undefined) {
-  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)}%` : "—";
+    : "-";
 }
 
 function getTravelDaysByMiles(miles: number) {
@@ -470,7 +466,7 @@ export default function PCSClient() {
               <div className="text-sm font-medium">Member Per Diem</div>
               <div className="mt-3 text-2xl font-bold">{fmtUSD(memberPerDiem)}</div>
               <div className="mt-1 text-xs text-gray-500">
-                {fmtUSD(memberPerDiemRate)} per day × {travelDays} day{travelDays === 1 ? "" : "s"}
+                {fmtUSD(memberPerDiemRate)} per day x {travelDays} day{travelDays === 1 ? "" : "s"}
               </div>
             </div>
 
@@ -486,7 +482,7 @@ export default function PCSClient() {
               <div className="text-sm font-medium">TLE Estimate</div>
               <div className="mt-3 text-2xl font-bold">{fmtUSD(tleEstimate)}</div>
               <div className="mt-1 text-xs text-gray-500">
-                {tleEligibleDays} eligible day{tleEligibleDays === 1 ? "" : "s"} × {fmtUSD(tleDailyUsed)}
+                {tleEligibleDays} eligible day{tleEligibleDays === 1 ? "" : "s"} x {fmtUSD(tleDailyUsed)}
               </div>
             </div>
           </div>

@@ -11,19 +11,19 @@ export const justMarried: Toolkit = {
       title: "First Week Checklist",
       items: [
         "Update DEERS + personnel records (this drives benefits).",
-        "Verify BAH “with dependents” status in your pay system.",
+        'Verify BAH "with dependents" status in your pay system.',
         "Pick your healthcare setup (Tricare options depending on branch/status).",
         "Update beneficiaries: SGLI + TSP (people forget this).",
-        "Create a shared “household baseline” budget (rent, groceries, car, insurance).",
+        'Create a shared "household baseline" budget (rent, groceries, car, insurance).',
       ],
     },
     {
       type: "checklist",
       title: "Money Setup That Prevents Fights",
       items: [
-        "One shared bills account + two personal “fun money” buckets (even small).",
+        'One shared bills account + two personal "fun money" buckets (even small).',
         "Agree on savings goals (emergency fund, travel, down payment).",
-        "Set a ‘talk first’ threshold for purchases (ex: $200+).",
+        "Set a 'talk first' threshold for purchases (ex: $200+).",
         "Use the OfficerOS budget export as the source of truth.",
       ],
     },
@@ -39,7 +39,7 @@ export const justMarried: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "Dual-military scenarios, filing status tradeoffs, and a “combined pay” mode.",
+      text: 'Dual-military scenarios, filing status tradeoffs, and a "combined pay" mode.',
     },
 
 

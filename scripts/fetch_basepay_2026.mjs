@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
 
@@ -100,10 +100,10 @@ async function main() {
     }
 
     if (!sanity(table)) {
-      console.log(`⚠️ Parsed 0 numeric values for ${key}. (DFAS may be blocking or the page markup changed.)`);
+      console.log(`[warn] Parsed 0 numeric values for ${key}. (DFAS may be blocking or the page markup changed.)`);
     } else {
       const sample = GRADES[key].find((g) => table[g]?.some((x) => typeof x === "number"));
-      console.log(`✅ Parsed ${key}. Sample ${sample}:`, table[sample].slice(0, 6));
+      console.log(`[ok] Parsed ${key}. Sample ${sample}:`, table[sample].slice(0, 6));
     }
 
     result.tables[key] = table;
@@ -115,10 +115,10 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `${YEAR}.json`);
   fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf8");
-  console.log(`\n✅ Wrote ${outPath}`);
+  console.log(`\n[ok] Wrote ${outPath}`);
 }
 
 main().catch((e) => {
-  console.error("❌ Failed:", e);
+  console.error("[error] Failed:", e);
   process.exit(1);
 });

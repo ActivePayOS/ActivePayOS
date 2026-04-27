@@ -21,7 +21,7 @@ export const promotionPlanner: Toolkit = {
         "50% to savings/investing (TSP/Roth IRA/emergency fund).",
         "30% to debt payoff (if any).",
         "20% to lifestyle upgrades (guilt-free).",
-        "If you’re behind on savings: temporarily shift more to savings until you’re stable.",
+        "If you're behind on savings: temporarily shift more to savings until you're stable.",
       ],
     },
     {
@@ -41,7 +41,7 @@ export const promotionPlanner: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "A ‘current vs promoted’ compare view that uses Pay Calculator + BAH ZIP to show the delta.",
+      text: "A 'current vs promoted' compare view that uses Pay Calculator + BAH ZIP to show the delta.",
     },
   ],
 };

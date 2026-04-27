@@ -113,7 +113,7 @@ export default function TermsPage() {
                     rel="noreferrer"
                     className="mt-4 inline-block text-sm font-medium underline underline-offset-2 hover:text-gray-700"
                 >
-                    {term.linkLabel} →
+                    {term.linkLabel} -&gt;
                 </a>
                 ) : null}
             </div>

@@ -88,9 +88,12 @@ export async function POST(req: NextRequest) {
     // FIX: Use buffer load instead of readFile (prevents ExcelJS "anchors" crash)
   const fileBuffer = await fs.readFile(templatePath);
 
-  // ExcelJS runtime loads this fine; TS types can mismatch across Node/ExcelJS versions
-  await (wb.xlsx as any).load(fileBuffer);
-  console.log("EXPORT ROUTE VERSION: buffer-load");
+  // ExcelJS runtime loads this fine; TS types can mismatch across Node/ExcelJS versions.
+  const xlsxLoader = wb.xlsx as unknown as {
+    load(data: Buffer): Promise<ExcelJS.Workbook>;
+  };
+  await xlsxLoader.load(fileBuffer);
+
   // Sheet names from your screenshots:
   const start = wb.getWorksheet("Start Here");
   const budget = wb.getWorksheet("Budget");
@@ -165,14 +168,14 @@ export async function POST(req: NextRequest) {
   //  C48 = Emergency fund
   //
   // NOTE: You currently do NOT have a Housing or Groceries row visible in the screenshot.
-  // So we’ll *only* set income + savings rows safely.
+  // So we'll *only* set income + savings rows safely.
   // Housing/Food are already shown on Start Here as suggested targets.
   // =========================
 
   budget.getCell("C6").value = totalIncome;
 
   // Put suggested minimum savings into Emergency Fund by default (user can re-allocate)
-  // TSP is "auto from %" in your sheet—so we do NOT overwrite C45 unless you want.
+  // TSP is "auto from %" in your sheet-so we do NOT overwrite C45 unless you want.
   budget.getCell("C48").value = suggestedMinSavings;
 
   // Write output

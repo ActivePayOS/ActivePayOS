@@ -12,7 +12,7 @@ export const retirementTsp: Toolkit = {
       items: [
         "Step 1: Set your contribution amount in myPay so money actually comes out of your paycheck.",
         "Step 2: Log in to TSP and choose how those contributions are invested.",
-        "Do not assume contribution setup and investment selection are the same thing — they are two separate steps.",
+        "Do not assume contribution setup and investment selection are the same thing - they are two separate steps.",
         "After both are set, confirm your contribution rate and your current fund allocation.",
       ],
     },
@@ -32,7 +32,7 @@ export const retirementTsp: Toolkit = {
       items: [
         "Roth: pay taxes now, withdrawals later are generally tax-free.",
         "Traditional: lower taxes now, pay taxes later on withdrawals.",
-        "If you’re unsure, choose one and stay consistent — your contribution rate matters more than finding a perfect answer.",
+        "If you're unsure, choose one and stay consistent - your contribution rate matters more than finding a perfect answer.",
         "Use promotions as your trigger to increase contributions automatically.",
       ],
     },
@@ -56,7 +56,7 @@ export const retirementTsp: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "Interactive projections: “If I increase TSP by 1% each promotion, where do I land?”",
+      text: 'Interactive projections: "If I increase TSP by 1% each promotion, where do I land?"',
     },
   ],
 };

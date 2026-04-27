@@ -79,7 +79,7 @@ export function yosLabelToIndex(label: string): number {
   const m = s.match(/over\s*(\d+)/);
   if (m) {
     const n = Number(m[1]);
-    const idx = YOS_BREAKS.indexOf(n as any);
+    const idx = YOS_BREAKS.findIndex((x) => x === n);
     if (idx !== -1) return idx + 1; // because index 0 is "2 or less"
   }
 

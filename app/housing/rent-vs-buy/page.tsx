@@ -9,11 +9,11 @@ function fmtUSD(v: number | null | undefined) {
         currency: "USD",
         maximumFractionDigits: 2,
       }).format(v)
-    : "—";
+    : "-";
 }
 
 function fmtPct(v: number | null | undefined) {
-  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)}%` : "—";
+  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)}%` : "-";
 }
 
 function monthlyMortgagePayment(principal: number, annualRate: number, years: number) {

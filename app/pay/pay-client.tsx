@@ -39,6 +39,26 @@ const YOS_OPTIONS = [
 const SOCIAL_SECURITY_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
 
+type BasePayData = {
+  year: number;
+  tables: Record<string, Partial<Record<PayGrade, Array<number | null>>>>;
+};
+
+type BasData = {
+  year?: number;
+  data?: {
+    year?: number;
+    rates?: {
+      officers?: number;
+      enlisted?: number;
+    };
+  };
+  rates?: {
+    officers?: number;
+    enlisted?: number;
+  };
+};
+
 function isEnlisted(g: PayGrade) {
   return g.startsWith("E-");
 }
@@ -50,7 +70,7 @@ function fmtUSD(v: number | null | undefined) {
         currency: "USD",
         maximumFractionDigits: 2,
       }).format(v)
-    : "—";
+    : "-";
 }
 
 function fmtUSD0(v: number | null | undefined) {
@@ -60,7 +80,7 @@ function fmtUSD0(v: number | null | undefined) {
         currency: "USD",
         maximumFractionDigits: 2,
       }).format(v)
-    : "—";
+    : "-";
 }
 
 function tableKeyForGrade(g: PayGrade) {
@@ -77,7 +97,7 @@ function yosToIndex(yos: number) {
   return idx === -1 ? 0 : idx + 1;
 }
 
-function getBasePayFromData(basepay: any, year: number, grade: PayGrade, yos: number): number {
+function getBasePayFromData(basepay: BasePayData, year: number, grade: PayGrade, yos: number): number {
   if (!basepay || basepay.year !== year) return 0;
   const key = tableKeyForGrade(grade);
   const row: (number | null)[] | undefined = basepay?.tables?.[key]?.[grade];
@@ -87,7 +107,7 @@ function getBasePayFromData(basepay: any, year: number, grade: PayGrade, yos: nu
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
-function getBasFromData(bas: any, year: number, grade: PayGrade): number {
+function getBasFromData(bas: BasData, year: number, grade: PayGrade): number {
   if (!bas) return 0;
 
   const src =
@@ -110,18 +130,17 @@ export default function PayClient({
   bas,
 }: {
   initialYear: number;
-  basepay: any;
-  bas: any;
+  basepay: BasePayData;
+  bas: BasData;
 }) {
-  const [year, setYear] = useState<(typeof YEARS)[number]>(
-    (YEARS.includes(initialYear as any) ? (initialYear as any) : YEARS[0]) as any
-  );
+  const initialSupportedYear = YEARS.find((y) => y === initialYear) ?? YEARS[0];
+  const [year, setYear] = useState<(typeof YEARS)[number]>(initialSupportedYear);
   const [grade, setGrade] = useState<PayGrade>("O-1");
   const [yos, setYos] = useState<number>(0);
   const [zip, setZip] = useState<string>("");
   const [dependents, setDependents] = useState<boolean>(false);
 
-  // “Premium export” knobs (hidden for now, but ready)
+  // "Premium export" knobs (hidden for now, but ready)
   const [tspPct] = useState<number>(0.10);
   const [savingsTargetPct] = useState<number>(0.20);
   const [housingTargetPct] = useState<number>(1.0);
@@ -262,7 +281,7 @@ export default function PayClient({
             className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
             title="Downloads an Excel budget workbook pre-filled with your pay + hybrid suggested plan."
           >
-            {exporting ? "Preparing export…" : "Download Budget Sheet"}
+            {exporting ? "Preparing export..." : "Download Budget Sheet"}
           </button>
           </div>
         </div>
@@ -281,7 +300,7 @@ export default function PayClient({
               <select
                 className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                 value={year}
-                onChange={(e) => setYear(Number(e.target.value) as any)}
+                onChange={(e) => setYear(Number(e.target.value) as (typeof YEARS)[number])}
               >
                 {YEARS.map((y) => (
                   <option key={y} value={y}>
@@ -368,8 +387,8 @@ export default function PayClient({
             <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
               <div className="font-medium text-gray-900">Budget export</div>
               <p className="mt-1">
-                The download includes a “Start Here” tab that pre-fills your pay and suggests
-                a hybrid plan (Housing ≈ BAH, Food ≈ BAS, Savings target %). You can edit everything.
+                The download includes a &quot;Start Here&quot; tab that pre-fills your pay and suggests
+                a hybrid plan (Housing about BAH, Food about BAS, Savings target %). You can edit everything.
               </p>
             </div>
           </div>
@@ -423,7 +442,7 @@ export default function PayClient({
               <div className="mt-1 text-xs text-gray-500">Social Security (6.2%) + Medicare (1.45%) on base pay.</div>
               <div className="mt-3 text-2xl font-bold">{fmtUSD(estimatedFicaTotal)}</div>
               <div className="mt-1 text-xs text-gray-500">
-                SS: {fmtUSD(estimatedSocialSecurity)} · Medicare: {fmtUSD(estimatedMedicare)}
+                SS: {fmtUSD(estimatedSocialSecurity)} - Medicare: {fmtUSD(estimatedMedicare)}
               </div>
             </div>
 
@@ -471,7 +490,7 @@ export default function PayClient({
                         {fmtUSD(x.value ?? 0)}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        {parts.sum > 0 ? `${pct.toFixed(0)}%` : "—"}
+                        {parts.sum > 0 ? `${pct.toFixed(0)}%` : "-"}
                       </div>
                     </div>
                   </div>

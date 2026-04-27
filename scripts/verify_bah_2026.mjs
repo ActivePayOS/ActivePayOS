@@ -29,4 +29,4 @@ check("02139");
 check("22003");
 check("90210");
 
-console.log(`✅ zipToMha keys: ${Object.keys(zipmha.zipToMha).length}`);
+console.log(`[ok] zipToMha keys: ${Object.keys(zipmha.zipToMha).length}`);

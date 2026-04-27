@@ -20,9 +20,9 @@ export const firstPcs: Toolkit = {
       type: "checklist",
       title: "Housing Decision Framework",
       items: [
-        "Default target: rent + utilities ≤ your BAH (or under if possible).",
-        "Don’t forget: deposits, parking, commute, furniture, internet setup fees.",
-        "If buying: be honest about your time-on-station; short stays usually don’t pencil.",
+        "Default target: rent + utilities <= your BAH (or under if possible).",
+        "Don't forget: deposits, parking, commute, furniture, internet setup fees.",
+        "If buying: be honest about your time-on-station; short stays usually don't pencil.",
         "Sanity check your budget with the OfficerOS export before signing anything.",
       ],
     },
@@ -32,7 +32,7 @@ export const firstPcs: Toolkit = {
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Preview BAH at the new ZIP" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Build the new baseline budget" },
-        { label: "Promotion Pay Planner", href: "/toolkits/promotion-planner", note: "If you’re promoting during the move" },
+        { label: "Promotion Pay Planner", href: "/toolkits/promotion-planner", note: "If you're promoting during the move" },
       ],
     },
     {
@@ -48,7 +48,7 @@ export const firstPcs: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "A PCS checklist + a simple PPM estimator + a ‘BAH vs rent’ comparison tool.",
+      text: "A PCS checklist + a simple PPM estimator + a 'BAH vs rent' comparison tool.",
     },
   ],
 };

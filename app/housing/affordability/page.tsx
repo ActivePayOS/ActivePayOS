@@ -16,7 +16,7 @@ function fmtUSD(v: number | null | undefined) {
         currency: "USD",
         maximumFractionDigits: 2,
       }).format(v)
-    : "—";
+    : "-";
 }
 
 function getHousingRating(housingPctOfBah: number) {
@@ -70,7 +70,7 @@ export default function HousingAffordabilityPage() {
     { label: "Rent", value: rent },
     { label: "Utilities", value: utilities },
     { label: "Parking", value: parking },
-    { label: "Renter’s Insurance", value: rentersInsurance },
+    { label: "Renter's Insurance", value: rentersInsurance },
     { label: "Commute / Transit", value: commute },
     { label: "Other Housing Costs", value: otherHousing },
   ];
@@ -173,7 +173,7 @@ export default function HousingAffordabilityPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium">Renter’s Insurance</label>
+                <label className="block text-sm font-medium">Renter&apos;s Insurance</label>
                 <input
                   type="number"
                   className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
@@ -228,7 +228,7 @@ export default function HousingAffordabilityPage() {
             <div className="rounded-2xl border p-4">
               <div className="text-sm font-medium">Housing vs BAH</div>
               <div className="mt-3 text-2xl font-bold">
-                {bah && bah > 0 ? `${(housingPctOfBah * 100).toFixed(0)}%` : "—"}
+                {bah && bah > 0 ? `${(housingPctOfBah * 100).toFixed(0)}%` : "-"}
               </div>
               <div className="mt-1 text-xs text-gray-500">
                 Percent of your BAH consumed by housing-related costs.

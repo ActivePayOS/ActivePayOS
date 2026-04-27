@@ -140,8 +140,8 @@ function main() {
   fs.writeFileSync(OUT_WITH, JSON.stringify(withJson, null, 2), "utf8");
   fs.writeFileSync(OUT_WITHOUT, JSON.stringify(withoutJson, null, 2), "utf8");
 
-  console.log(`✅ Wrote ${OUT_WITH}`);
-  console.log(`✅ Wrote ${OUT_WITHOUT}`);
+  console.log(`[ok] Wrote ${OUT_WITH}`);
+  console.log(`[ok] Wrote ${OUT_WITHOUT}`);
   console.log(
     `Rows: with=${Object.keys(withJson.ratesByMha).length}, without=${Object.keys(withoutJson.ratesByMha).length}`
   );

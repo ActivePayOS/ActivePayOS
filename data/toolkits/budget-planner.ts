@@ -28,7 +28,7 @@ export const budgetPlanner: Toolkit = {
     },
     {
       type: "actions",
-      title: "activepayos Actions",
+      title: "ActivePayOS Actions",
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Download the Excel export from here" },
         { label: "Toolkits Home", href: "/toolkits", note: "Pick a life-stage plan" },
@@ -42,7 +42,7 @@ export const budgetPlanner: Toolkit = {
     {
       type: "text",
       title: "Coming Next",
-      text: "A dashboard view inside activepayos (so you can budget without Excel) + paycheck split planning.",
+      text: "A dashboard view inside ActivePayOS (so you can budget without Excel) + paycheck split planning.",
     },
   ],
 };

@@ -13,7 +13,7 @@ export const deployment: Toolkit = {
         "Turn on autopay for rent, utilities, credit cards, and loans.",
         "Freeze unnecessary subscriptions so you don't bleed money while you're gone.",
         "Set a deployment savings target (and automate it).",
-        "Download your activepayos budget sheet and build a 'deployment' version of your baseline.",
+        "Download your ActivePayOS budget sheet and build a 'deployment' version of your baseline.",
       ],
     },
     {
@@ -28,7 +28,7 @@ export const deployment: Toolkit = {
     },
     {
       type: "actions",
-      title: "activepayos Actions",
+      title: "ActivePayOS Actions",
       actions: [
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Make a 'deployment mode' budget export" },
         { label: "Pay Calculator", href: "/pay", note: "Know your baseline before any special pays" },

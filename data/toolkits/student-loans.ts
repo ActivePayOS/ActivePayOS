@@ -12,7 +12,7 @@ export const studentLoans: Toolkit = {
         "List your loans (balance, rate, federal vs private).",
         "If eligible, learn PSLF basics from the official source (don't guess).",
         "High-interest private loans often deserve priority payoff.",
-        "Use the activepayos budget export to pick a monthly payment you can sustain.",
+        "Use the ActivePayOS budget export to pick a monthly payment you can sustain.",
       ],
     },
     {
@@ -27,7 +27,7 @@ export const studentLoans: Toolkit = {
     },
     {
       type: "actions",
-      title: "activepayos Actions",
+      title: "ActivePayOS Actions",
       actions: [
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Lock a payment you can sustain" },
         { label: "TSP & Retirement", href: "/toolkits/retirement-tsp", note: "Don't pause wealth-building blindly" },

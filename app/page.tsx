@@ -2,7 +2,7 @@ export default function Home() {
   return (
     <main className="space-y-10">
       <section className="rounded-3xl border bg-white p-10 shadow-sm">
-        <h1 className="text-4xl font-semibold tracking-tight">activepayos</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">ActivePayOS</h1>
         <p className="mt-4 max-w-2xl text-gray-600">
         Military pay & benefits tools - accurate, visual, and simple. Built for active duty.
         <br />
@@ -15,7 +15,7 @@ export default function Home() {
             Open Pay Calculator -&gt;
           </a>
           <a className="rounded-xl border px-5 py-3 text-sm font-medium" href="/about">
-            Why activepayos
+            Why ActivePayOS
           </a>
         </div>
       </section>

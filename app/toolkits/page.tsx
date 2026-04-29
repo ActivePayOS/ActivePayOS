@@ -56,7 +56,7 @@ export default function ToolkitsPage() {
     <main className="mx-auto max-w-6xl p-10">
       <header className="rounded-3xl border bg-white p-8 shadow-sm">
         <h1 className="text-3xl font-semibold tracking-tight">
-          activepayos Toolkits
+          ActivePayOS Toolkits
         </h1>
         <p className="mt-2 text-sm text-gray-600">
           Built for junior service members. Education + calculators, all in one place.

@@ -2,7 +2,7 @@ export default function ContactPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
       <div>
-        <h1 className="text-3xl font-semibold">Contact activepayos</h1>
+        <h1 className="text-3xl font-semibold">Contact ActivePayOS</h1>
         <p className="mt-2 text-sm text-gray-600">
           Questions, bug reports, ideas, or feedback - send them our way.
         </p>
@@ -27,14 +27,14 @@ export default function ContactPage() {
           <li>Questions about how a tool works</li>
           <li>Bug reports or wrong numbers</li>
           <li>Ideas for new calculators or toolkits</li>
-          <li>Anything that would make activepayos more useful</li>
+          <li>Anything that would make ActivePayOS more useful</li>
         </ul>
       </div>
 
    {/*   <div className="rounded-2xl border bg-gray-50 p-5">
-        <h2 className="text-lg font-semibold">Support activepayos</h2>
+        <h2 className="text-lg font-semibold">Support ActivePayOS</h2>
         <p className="mt-2 text-sm text-gray-600">
-          activepayos is free to use. If it helps you and you want to support the project,
+          ActivePayOS is free to use. If it helps you and you want to support the project,
           you can buy us a coffee.
         </p>
        

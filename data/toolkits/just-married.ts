@@ -24,12 +24,12 @@ export const justMarried: Toolkit = {
         'One shared bills account + two personal "fun money" buckets (even small).',
         "Agree on savings goals (emergency fund, travel, down payment).",
         "Set a 'talk first' threshold for purchases (ex: $200+).",
-        "Use the activepayos budget export as the source of truth.",
+        "Use the ActivePayOS budget export as the source of truth.",
       ],
     },
     {
       type: "actions",
-      title: "activepayos Actions",
+      title: "ActivePayOS Actions",
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Re-run with dependents" },
         { label: "Budget Planner", href: "/toolkits/budget-planner" },

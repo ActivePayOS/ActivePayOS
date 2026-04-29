@@ -197,7 +197,7 @@ export default function PayClient({
         label: "BAH",
         value: bah,
         hint: receivesBah
-          ? "Usually non-taxable. From DTMO (ZIP + dependents)."
+          ? "Usually non-taxable. From DTMO (ZIP + dependent status)."
           : "Set to $0 because barracks/government housing is selected.",
       },
       { label: "BAS", value: basRate, hint: "Usually non-taxable. Standard DFAS rate (not location-based)." },

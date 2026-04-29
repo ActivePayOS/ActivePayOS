@@ -293,6 +293,9 @@ export default function PayClient({
             <p className="mt-2 text-sm text-gray-600">
               Monthly pay components with a clear taxable vs non-taxable breakdown.
             </p>
+            <p className="mt-2 text-xs text-gray-500">
+              2026 base pay, BAS, and BAH data last verified on April 29, 2026.
+            </p>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 md:mt-0">

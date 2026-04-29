@@ -14,10 +14,10 @@ export default function ContactPage() {
           The simplest way to reach us right now is email.
         </p>
         <a
-          href="mailto:hello@activepayos.com?subject=activepayos%20Question"
+          href="mailto:contact@activepayos.com?subject=activepayos%20Question"
           className="mt-3 inline-block text-sm font-medium underline"
         >
-          hello@activepayos.com
+          contact@activepayos.com
         </a>
       </div>
 

@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const privacySections = [
   {
-    title: "What OfficerOS does",
-    text: "OfficerOS provides educational military pay and planning tools. It helps you estimate things like base pay, BAH, and BAS using public reference data and the information you enter.",
+    title: "What activepayos does",
+    text: "activepayos provides educational military pay and planning tools. It helps you estimate things like base pay, BAH, and BAS using public reference data and the information you enter.",
   },
   {
     title: "What information you enter",
@@ -11,7 +11,7 @@ const privacySections = [
   },
   {
     title: "How your information is used",
-    text: "The information you enter is used to generate calculator results and planning outputs on demand. OfficerOS is designed to help you understand your pay and build simple planning tools, not to create an official military pay record.",
+    text: "The information you enter is used to generate calculator results and planning outputs on demand. activepayos is designed to help you understand your pay and build simple planning tools, not to create an official military pay record.",
   },
   {
     title: "ZIP code and pay inputs",
@@ -23,27 +23,27 @@ const privacySections = [
   },
   {
     title: "Data storage",
-    text: "OfficerOS is intended to keep calculator use simple and lightweight. Unless a feature clearly says otherwise, do not assume that information you enter is stored as part of a permanent financial account or official record.",
+    text: "activepayos is intended to keep calculator use simple and lightweight. Unless a feature clearly says otherwise, do not assume that information you enter is stored as part of a permanent financial account or official record.",
   },
   {
     title: "Cookies and analytics",
-    text: "OfficerOS may use basic website analytics, hosting logs, or similar tools to understand site performance and improve the experience. If analytics or cookies are added later, this page should be updated to reflect that clearly.",
+    text: "activepayos may use basic website analytics, hosting logs, or similar tools to understand site performance and improve the experience. If analytics or cookies are added later, this page should be updated to reflect that clearly.",
   },
   {
     title: "Official sources still control",
-    text: "OfficerOS is not part of the Department of Defense, DFAS, the U.S. military, or any government agency. Official pay systems, DFAS guidance, and your LES control over any estimate shown here.",
+    text: "activepayos is not part of the Department of Defense, DFAS, the U.S. military, or any government agency. Official pay systems, DFAS guidance, and your LES control over any estimate shown here.",
   },
   {
     title: "Children's privacy",
-    text: "OfficerOS is intended for a general audience and is not designed for children to submit personal information.",
+    text: "activepayos is intended for a general audience and is not designed for children to submit personal information.",
   },
   {
     title: "Changes to this policy",
-    text: "This Privacy Policy may be updated over time as OfficerOS changes. ",
+    text: "This Privacy Policy may be updated over time as activepayos changes. ",
   },
   {
     title: "Questions",
-    text: "If you have questions about privacy or data use on OfficerOS, please use the contact page.",
+    text: "If you have questions about privacy or data use on activepayos, please use the contact page.",
   },
 ];
 
@@ -55,7 +55,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-gray-600">
-          A simple explanation of what OfficerOS does with the information you
+          A simple explanation of what activepayos does with the information you
           enter while using the site.
         </p>
 
@@ -93,7 +93,7 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-semibold">Important note</h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-gray-600">
           <li>
-            OfficerOS is for education and planning, not official payroll,
+            activepayos is for education and planning, not official payroll,
             legal, or tax advice.
           </li>
           <li>

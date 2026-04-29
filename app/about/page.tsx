@@ -1,7 +1,7 @@
 export default function AboutPage() {
   return (
     <main className="mx-auto max-w-3xl p-10 space-y-6">
-      <h1 className="text-3xl font-semibold">About OfficerOS</h1>
+      <h1 className="text-3xl font-semibold">About activepayos</h1>
 
       <p>
         Hi.
@@ -23,11 +23,11 @@ export default function AboutPage() {
       </p>
 
       <p>
-        So we built <strong>OfficerOS</strong>.
+        So we built <strong>activepayos</strong>.
       </p>
 
       <p>
-        OfficerOS is a free tool designed to help service members understand the
+        activepayos is a free tool designed to help service members understand the
         basics of their finances - pay, housing allowances, budgeting,
         retirement, and the decisions that matter early in a career.
       </p>
@@ -42,7 +42,7 @@ export default function AboutPage() {
       </p>
 
       <p>
-        If OfficerOS helps you get organized, avoid a mistake, or feel more
+        If activepayos helps you get organized, avoid a mistake, or feel more
         confident about the numbers - then it is doing its job.
       </p>
 
@@ -55,7 +55,7 @@ export default function AboutPage() {
       </p>
 
       <p className="mt-6 text-xs text-gray-400">
-        OfficerOS is not affiliated with the Department of Defense.
+        activepayos is not affiliated with the Department of Defense.
         Always verify financial decisions with official sources.
      </p>
     </main>

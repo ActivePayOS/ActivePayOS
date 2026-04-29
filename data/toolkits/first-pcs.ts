@@ -23,12 +23,12 @@ export const firstPcs: Toolkit = {
         "Default target: rent + utilities <= your BAH (or under if possible).",
         "Don't forget: deposits, parking, commute, furniture, internet setup fees.",
         "If buying: be honest about your time-on-station; short stays usually don't pencil.",
-        "Sanity check your budget with the OfficerOS export before signing anything.",
+        "Sanity check your budget with the activepayos export before signing anything.",
       ],
     },
     {
       type: "actions",
-      title: "OfficerOS Actions",
+      title: "activepayos Actions",
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Preview BAH at the new ZIP" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Build the new baseline budget" },

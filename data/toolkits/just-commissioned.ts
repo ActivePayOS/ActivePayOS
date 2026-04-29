@@ -27,7 +27,7 @@ export const justCommissioned: Toolkit = {
     },
     {
       type: "actions",
-      title: "OfficerOS Actions",
+      title: "activepayos Actions",
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Get your numbers right first" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Download the Excel export" },

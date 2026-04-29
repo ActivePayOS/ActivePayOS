@@ -24,7 +24,7 @@ const routes = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://officeros.com";
+  const baseUrl = "https://activepayos.com";
 
   return routes.map((route) => ({
     url: `${baseUrl}${route}`,

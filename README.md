@@ -1,10 +1,10 @@
-# OfficerOS
+# activepayos
 
-OfficerOS is a simple military pay and planning website built to help service members better understand their compensation.
+activepayos is a simple military pay and planning website built to help service members better understand their compensation.
 
 It focuses on making common pay topics easier to use and less confusing by offering clear tools for military base pay, BAH, BAS, and budgeting. The goal is not to replace official systems, but to give users a cleaner way to estimate, plan, and learn.
 
-## What OfficerOS includes
+## What activepayos includes
 
 - Military pay calculator
 - BAH lookup by ZIP code
@@ -16,7 +16,7 @@ It focuses on making common pay topics easier to use and less confusing by offer
 
 ## Who it is for
 
-OfficerOS is built for:
+activepayos is built for:
 
 - ROTC cadets and midshipmen preparing to commission
 - newly commissioned officers
@@ -28,7 +28,7 @@ OfficerOS is built for:
 
 Military pay information exists, but it is often spread across multiple official websites and not always easy to understand quickly.
 
-OfficerOS brings key pay inputs into one place and presents them in a more usable format for education and planning.
+activepayos brings key pay inputs into one place and presents them in a more usable format for education and planning.
 
 ## Current features
 
@@ -45,7 +45,7 @@ The pay calculator is the core feature of the site. It is designed to help users
 Users can export a budget spreadsheet based on their current pay inputs and planning assumptions.
 
 ### Toolkits
-OfficerOS also includes simple toolkit pages for common military life situations, such as:
+activepayos also includes simple toolkit pages for common military life situations, such as:
 
 - just commissioned
 - junior enlisted
@@ -56,7 +56,7 @@ OfficerOS also includes simple toolkit pages for common military life situations
 
 ## Data sources
 
-OfficerOS uses public reference data and planning assumptions, including military pay tables and allowance information.
+activepayos uses public reference data and planning assumptions, including military pay tables and allowance information.
 
 Examples include:
 
@@ -68,7 +68,7 @@ These tools are built for education and planning. Users should always verify imp
 
 ## Important disclaimer
 
-OfficerOS is an educational and planning tool.
+activepayos is an educational and planning tool.
 
 It is **not** an official Department of Defense, DFAS, or U.S. military website. It does **not** provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependency status, deductions, special pays, government quarters, meal plans, and other service-specific factors.
 
@@ -86,5 +86,5 @@ Always verify important decisions with your Leave and Earnings Statement (LES), 
 Clone the repo:
 
 ```bash
-git clone https://github.com/nickparker52/OfficerOS.git
-cd OfficerOS
+git clone https://github.com/nickparker52/activepayos.git
+cd activepayos

@@ -125,7 +125,7 @@ export default function TermsPage() {
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-gray-600">
           <li>Base pay is generally taxable. BAH and BAS are generally non-taxable.</li>
           <li>Your actual LES may look different because of deductions, tax withholding, meal plans, or special pays.</li>
-          <li>OfficerOS is for education and planning. Always verify major decisions with your LES, DFAS, and official sources.</li>
+          <li>activepayos is for education and planning. Always verify major decisions with your LES, DFAS, and official sources.</li>
         </ul>
       </section>
     </main>

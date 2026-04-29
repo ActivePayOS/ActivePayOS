@@ -34,7 +34,7 @@ export const juniorEnlisted: Toolkit = {
 
     {
     type: "actions",
-    title: "OfficerOS Actions",
+    title: "activepayos Actions",
     actions: [
         { label: "Pay Calculator", href: "/pay", note: "Download the budget sheet" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Build your baseline plan" },

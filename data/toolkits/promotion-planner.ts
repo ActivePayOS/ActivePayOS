@@ -26,7 +26,7 @@ export const promotionPlanner: Toolkit = {
     },
     {
       type: "actions",
-      title: "OfficerOS Actions",
+      title: "activepayos Actions",
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Compare current vs promoted pay" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Bake the split into your plan" },

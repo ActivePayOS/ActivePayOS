@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
 
   // Write output
   const out = await wb.xlsx.writeBuffer();
-  const filename = `OfficerOS_Budget_${zip5}_${body.grade ?? "Pay"}_${body.year ?? 2026}.xlsx`;
+  const filename = `activepayos_Budget_${zip5}_${body.grade ?? "Pay"}_${body.year ?? 2026}.xlsx`;
 
   return new NextResponse(out, {
     status: 200,

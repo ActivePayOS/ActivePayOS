@@ -9,7 +9,7 @@ function slugify(s: string) {
 }
 
 function storageKey(toolkitSlug: string) {
-  return `officeros:toolkit:${toolkitSlug}:checks`;
+  return `activepayos:toolkit:${toolkitSlug}:checks`;
 }
 
 export default function ToolkitPage({ toolkit }: { toolkit: Toolkit }) {

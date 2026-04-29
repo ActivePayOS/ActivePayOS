@@ -245,7 +245,7 @@ export default function PayClient({
       const safeZip = String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "");
       const a = document.createElement("a");
       a.href = url;
-      a.download = `OfficerOS_Budget_${safeZip || "ZIP"}_${grade}_${year}.xlsx`;
+      a.download = `activepayos_Budget_${safeZip || "ZIP"}_${grade}_${year}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

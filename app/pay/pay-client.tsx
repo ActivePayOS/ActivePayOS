@@ -215,6 +215,16 @@ export default function PayClient({
 
   async function downloadBudgetXlsx() {
     try {
+      if (receivesBah && (!zip || zip.trim().length === 0)) {
+        alert("Enter a duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet.");
+        return;
+      }
+
+      if (receivesBah && bah === null) {
+        alert("Enter a valid duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet.");
+        return;
+      }
+
       setExporting(true);
 
       const payload = {
@@ -245,7 +255,11 @@ export default function PayClient({
 
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
-        alert(`Export failed. ${msg || "Check server logs."}`);
+        const userMessage =
+          msg.includes("Invalid ZIP")
+            ? "Enter a duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet."
+            : "Export failed. Please check your inputs and try again.";
+        alert(userMessage);
         return;
       }
 

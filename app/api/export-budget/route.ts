@@ -9,8 +9,9 @@ type ExportPayload = {
   year: number;
   grade: string;
   yosLabel: string;
-  zip: string;
+  zip?: string;
   withDependents: boolean;
+  receivesBah?: boolean;
 
   basePayMonthly: number;
   bahMonthly: number;
@@ -45,11 +46,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const receivesBah = body.receivesBah !== false;
   const zip5 = String(body.zip ?? "").trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1];
-  if (!zip5) return NextResponse.json({ error: "Invalid ZIP" }, { status: 400 });
+  if (receivesBah && !zip5) {
+    return NextResponse.json({ error: "Invalid ZIP" }, { status: 400 });
+  }
 
   const base = num(body.basePayMonthly);
-  const bah = num(body.bahMonthly);
+  const bah = receivesBah ? num(body.bahMonthly) : 0;
   const bas = num(body.basMonthly);
   const other = num(body.otherIncomeMonthly ?? 0);
 
@@ -137,7 +141,7 @@ export async function POST(req: NextRequest) {
   start.getCell("B5").value = body.year ?? 2026;
   start.getCell("B6").value = body.grade ?? "";
   start.getCell("B7").value = body.yosLabel ?? "";
-  start.getCell("B8").value = zip5;
+  start.getCell("B8").value = receivesBah ? zip5 : "No BAH / barracks";
   start.getCell("B9").value = body.withDependents ? "TRUE" : "FALSE";
   start.getCell("B10").value = stateTaxPct; // decimal
   start.getCell("B11").value = tspPct;      // decimal
@@ -180,7 +184,8 @@ export async function POST(req: NextRequest) {
 
   // Write output
   const out = await wb.xlsx.writeBuffer();
-  const filename = `activepayos_Budget_${zip5}_${body.grade ?? "Pay"}_${body.year ?? 2026}.xlsx`;
+  const filenameLocation = receivesBah ? zip5 : "NoBAH";
+  const filename = `activepayos_Budget_${filenameLocation}_${body.grade ?? "Pay"}_${body.year ?? 2026}.xlsx`;
 
   return new NextResponse(out, {
     status: 200,

@@ -138,6 +138,7 @@ export default function PayClient({
   const [grade, setGrade] = useState<PayGrade>("O-1");
   const [yos, setYos] = useState<number>(0);
   const [zip, setZip] = useState<string>("");
+  const [receivesBah, setReceivesBah] = useState<boolean>(true);
   const [dependents, setDependents] = useState<boolean>(false);
 
   // "Premium export" knobs (hidden for now, but ready)
@@ -157,14 +158,16 @@ export default function PayClient({
     [bas, year, grade]
   );
 
-  const bah = useMemo(() => getBahRate(zip, grade, dependents), [zip, grade, dependents]);
+  const bahRate = useMemo(() => getBahRate(zip, grade, dependents), [zip, grade, dependents]);
+  const bah = receivesBah ? bahRate : 0;
 
   const bahError = useMemo(() => {
+    if (!receivesBah) return null;
     if (!zip || zip.trim().length === 0) return null;
-    return bah === null
+    return bahRate === null
       ? "BAH data unavailable for this ZIP (invalid ZIP, unsupported territory/APO, or missing dataset). Try a nearby ZIP."
       : null;
-  }, [zip, bah]);
+  }, [receivesBah, zip, bahRate]);
 
   const taxableIncomeMonthly = basePay;
   const nonTaxableIncomeMonthly = (bah ?? 0) + basRate;
@@ -190,12 +193,18 @@ export default function PayClient({
   const parts = useMemo(() => {
     const p: { label: string; value: number | null; hint: string }[] = [
       { label: "Base Pay", value: basePay, hint: "Taxable. From DFAS pay tables (grade + YOS)." },
-      { label: "BAH", value: bah, hint: "Usually non-taxable. From DTMO (ZIP + dependents)." },
+      {
+        label: "BAH",
+        value: bah,
+        hint: receivesBah
+          ? "Usually non-taxable. From DTMO (ZIP + dependents)."
+          : "Set to $0 because barracks/government housing is selected.",
+      },
       { label: "BAS", value: basRate, hint: "Usually non-taxable. Standard DFAS rate (not location-based)." },
     ];
     const sum = p.reduce((a, x) => a + (x.value ?? 0), 0);
     return { p, sum };
-  }, [basePay, bah, basRate]);
+  }, [basePay, bah, basRate, receivesBah]);
 
   const yosLabel = useMemo(() => {
     const found = YOS_OPTIONS.find((o) => o.value === yos);
@@ -212,8 +221,9 @@ export default function PayClient({
         year,
         grade,
         yosLabel,
-        zip,
+        zip: receivesBah ? zip : "",
         withDependents: dependents,
+        receivesBah,
 
         basePayMonthly: basePay,
         bahMonthly: bah ?? 0,
@@ -242,7 +252,9 @@ export default function PayClient({
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
 
-      const safeZip = String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "");
+      const safeZip = receivesBah
+        ? String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "")
+        : "NoBAH";
       const a = document.createElement("a");
       a.href = url;
       a.download = `activepayos_Budget_${safeZip || "ZIP"}_${grade}_${year}.xlsx`;
@@ -349,7 +361,7 @@ export default function PayClient({
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div>
+              <div className={!receivesBah ? "opacity-60" : ""}>
                 <label className="block text-sm font-medium">
                   Duty ZIP (for BAH)
                 </label>
@@ -357,14 +369,13 @@ export default function PayClient({
                   className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
                   placeholder="02139"
                   value={zip}
+                  disabled={!receivesBah}
                   onChange={(e) => setZip(e.target.value)}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Tip: ZIP+4 works too (e.g., 02139-1234).
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  Note: Many junior enlisted members living in barracks or government housing do not receive BAH.
-                  Verify with your LES.
+                  {receivesBah
+                    ? "Tip: ZIP+4 works too (e.g., 02139-1234)."
+                    : "ZIP is not required when BAH is set to $0."}
                 </p>
                 {bahError && (
                   <p className="mt-2 text-sm text-red-600">
@@ -373,15 +384,33 @@ export default function PayClient({
                 )}
               </div>
 
-              <label className="mt-6 flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={dependents}
-                  onChange={(e) => setDependents(e.target.checked)}
-                />
-                With dependents
-              </label>
+              <div className="mt-6 space-y-3 text-sm">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4"
+                    checked={!receivesBah}
+                    onChange={(e) => setReceivesBah(!e.target.checked)}
+                  />
+                  <span>
+                    Barracks / government housing (no BAH)
+                    <span className="mt-1 block text-xs text-gray-500">
+                      Select this if you do not receive BAH. The budget sheet will use $0 for housing allowance.
+                    </span>
+                  </span>
+                </label>
+
+                <label className={`flex items-center gap-2 ${!receivesBah ? "opacity-60" : ""}`}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={dependents}
+                    disabled={!receivesBah}
+                    onChange={(e) => setDependents(e.target.checked)}
+                  />
+                  With dependents
+                </label>
+              </div>
             </div>
 
             <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">

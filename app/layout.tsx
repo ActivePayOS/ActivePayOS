@@ -96,7 +96,7 @@ export default function RootLayout({
           <footer className="border-t py-8 text-xs text-gray-500">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                (c) {new Date().getFullYear()} ActivePayOS. Not affiliated with the U.S. Department of Defense.
+                (c) {new Date().getFullYear()} ActivePayOS. All rights reserved. Not affiliated with the U.S. Department of Defense.
                 <br />
                 For educational purposes only - verify financial decisions with DFAS and official sources.
               </div>

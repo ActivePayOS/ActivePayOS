@@ -50,7 +50,7 @@ export const retirementTsp: Toolkit = {
       actions: [
         { label: "myPay", href: "https://mypay.dfas.mil/" },
         { label: "TSP (Official)", href: "https://www.tsp.gov/" },
-        { label: "DoD Blended Retirement System", href: "https://militarypay.defense.gov/Benefits/Blended-Retirement-System/" },
+        { label: "DoD Blended Retirement System", href: "https://militarypay.defense.gov/BlendedRetirement/" },
       ],
     },
     {

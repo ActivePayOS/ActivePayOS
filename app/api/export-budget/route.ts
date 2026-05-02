@@ -12,6 +12,7 @@ type ExportPayload = {
   zip?: string;
   withDependents: boolean;
   receivesBah?: boolean;
+  stateOfLegalResidence?: string;
 
   basePayMonthly: number;
   bahMonthly: number;

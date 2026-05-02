@@ -39,6 +39,60 @@ const YOS_OPTIONS = [
 const SOCIAL_SECURITY_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
 
+const STATE_RESIDENCY_OPTIONS = [
+  "Alabama",
+  "Alaska",
+  "Arizona",
+  "Arkansas",
+  "California",
+  "Colorado",
+  "Connecticut",
+  "Delaware",
+  "District of Columbia",
+  "Florida",
+  "Georgia",
+  "Hawaii",
+  "Idaho",
+  "Illinois",
+  "Indiana",
+  "Iowa",
+  "Kansas",
+  "Kentucky",
+  "Louisiana",
+  "Maine",
+  "Maryland",
+  "Massachusetts",
+  "Michigan",
+  "Minnesota",
+  "Mississippi",
+  "Missouri",
+  "Montana",
+  "Nebraska",
+  "Nevada",
+  "New Hampshire",
+  "New Jersey",
+  "New Mexico",
+  "New York",
+  "North Carolina",
+  "North Dakota",
+  "Ohio",
+  "Oklahoma",
+  "Oregon",
+  "Pennsylvania",
+  "Rhode Island",
+  "South Carolina",
+  "South Dakota",
+  "Tennessee",
+  "Texas",
+  "Utah",
+  "Vermont",
+  "Virginia",
+  "Washington",
+  "West Virginia",
+  "Wisconsin",
+  "Wyoming",
+] as const;
+
 type BasePayData = {
   year: number;
   tables: Record<string, Partial<Record<PayGrade, Array<number | null>>>>;
@@ -140,6 +194,7 @@ export default function PayClient({
   const [zip, setZip] = useState<string>("");
   const [receivesBah, setReceivesBah] = useState<boolean>(true);
   const [dependents, setDependents] = useState<boolean>(false);
+  const [stateOfLegalResidence, setStateOfLegalResidence] = useState<string>("");
 
   // "Premium export" knobs (hidden for now, but ready)
   const [tspPct] = useState<number>(0.10);
@@ -234,6 +289,7 @@ export default function PayClient({
         zip: receivesBah ? zip : "",
         withDependents: dependents,
         receivesBah,
+        stateOfLegalResidence,
 
         basePayMonthly: basePay,
         bahMonthly: bah ?? 0,
@@ -375,6 +431,28 @@ export default function PayClient({
                 ))}
               </select>
               
+            </div>
+
+            <div>
+              <label htmlFor="state-of-legal-residence" className="block text-sm font-medium">
+                State of Legal Residence
+              </label>
+              <select
+                id="state-of-legal-residence"
+                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                value={stateOfLegalResidence}
+                onChange={(e) => setStateOfLegalResidence(e.target.value)}
+              >
+                <option value="">Select state</option>
+                {STATE_RESIDENCY_OPTIONS.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                For planning context only. State withholding is not estimated in this calculator yet.
+              </p>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">

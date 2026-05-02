@@ -42,7 +42,7 @@ export const firstPcs: Toolkit = {
         { label: "Joint Travel Regulations (JTR)", href: "https://www.travel.dod.mil/Policy-Regulations/Joint-Travel-Regulations/" },
         { label: "Defense Travel (DTS / Travel)", href: "https://www.travel.dod.mil/" },
         { label: "DFAS (Travel Pay)", href: "https://www.dfas.mil/" },
-        { label: "Move.mil (PCS Moving Resources)", href: "https://www.militaryonesource.mil/moving-housing/moving/" },
+        { label: "Military OneSource (PCS Moving Resources)", href: "https://www.militaryonesource.mil/moving-pcs/" },
       ],
     },
     {

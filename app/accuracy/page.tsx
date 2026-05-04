@@ -31,7 +31,7 @@ const dataSources = [
     name: "BAH rates",
     status: "Verified",
     source: "DTMO / Military Pay 2026 BAH tables",
-    href: "https://militarypay.defense.gov/pay/allowances/bah.aspx",
+    href: "https://militarypay.defense.gov/PAY/Allowances/bah.aspx",
   },
   {
     name: "FICA",

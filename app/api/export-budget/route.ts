@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
   const savingsTargetPct = clamp(num(body.savingsTargetPct ?? 0.20), 0, 0.9);
   const tspPct = clamp(num(body.tspPct ?? 0.10), 0, 0.92);
   const stateTaxPct = clamp(num(body.stateTaxPct ?? 0), 0, 0.2);
+  const stateOfLegalResidence = String(body.stateOfLegalResidence ?? "").trim();
 
   // Suggested dollars (Hybrid)
   const suggestedHousing = bah * housingTargetPct;
@@ -118,8 +119,9 @@ export async function POST(req: NextRequest) {
   //  B7 YOS bracket
   //  B8 Duty ZIP
   //  B9 Dependents (TRUE/FALSE)
-  //  B10 State tax %
-  //  B11 TSP %
+  //  B10 State of legal residence
+  //  B11 State tax % (optional rough estimate)
+  //  B12 TSP %
   //
   // Monthly Pay (green/blue) in column E:
   //  E5 Base
@@ -128,15 +130,15 @@ export async function POST(req: NextRequest) {
   //  E8 Other income
   //  E9 Total monthly income
   //
-  // Hybrid target % (blue) in column I:
-  //  I5 Housing target % of BAH
-  //  I6 Food target % of BAS
-  //  I7 Minimum savings rate
+  // Hybrid target % (blue) in column H:
+  //  H5 Housing target % of BAH
+  //  H6 Food target % of BAS
+  //  H7 Minimum savings rate
   //
-  // Suggested $ (green) in column I:
-  //  I9 Suggested Housing Budget
-  //  I10 Suggested Food Budget
-  //  I11 Suggested Minimum Savings
+  // Suggested $ (green) in column H:
+  //  H9 Suggested Housing Budget
+  //  H10 Suggested Food Budget
+  //  H11 Suggested Minimum Savings
   // =========================
 
   start.getCell("B5").value = body.year ?? 2026;
@@ -144,8 +146,9 @@ export async function POST(req: NextRequest) {
   start.getCell("B7").value = body.yosLabel ?? "";
   start.getCell("B8").value = receivesBah ? zip5 : "No BAH / barracks";
   start.getCell("B9").value = body.withDependents ? "TRUE" : "FALSE";
-  start.getCell("B10").value = stateTaxPct; // decimal
-  start.getCell("B11").value = tspPct;      // decimal
+  start.getCell("B10").value = stateOfLegalResidence || "Not selected";
+  start.getCell("B11").value = stateTaxPct; // decimal
+  start.getCell("B12").value = tspPct;      // decimal
 
   start.getCell("E5").value = base;
   start.getCell("E6").value = bah;
@@ -153,13 +156,13 @@ export async function POST(req: NextRequest) {
   start.getCell("E8").value = other;
   start.getCell("E9").value = totalIncome;
 
-  start.getCell("I5").value = housingTargetPct;
-  start.getCell("I6").value = foodTargetPct;
-  start.getCell("I7").value = savingsTargetPct;
+  start.getCell("H5").value = housingTargetPct;
+  start.getCell("H6").value = foodTargetPct;
+  start.getCell("H7").value = savingsTargetPct;
 
-  start.getCell("I9").value = suggestedHousing;
-  start.getCell("I10").value = suggestedFood;
-  start.getCell("I11").value = suggestedMinSavings;
+  start.getCell("H9").value = suggestedHousing;
+  start.getCell("H10").value = suggestedFood;
+  start.getCell("H11").value = suggestedMinSavings;
 
   // =========================
   // Budget tab mapping (from your screenshot)

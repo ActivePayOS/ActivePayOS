@@ -9,9 +9,9 @@ const terms = [
   },
   {
     title: "BAH",
-    text: "Basic Allowance for Housing. A housing allowance based on duty location, pay grade, and dependent status. It is generally non-taxable. Living in government quarters or barracks can affect BAH eligibility and amount, so always verify with your LES.",
+    text: "Basic Allowance for Housing. A housing allowance based on permanent duty location, pay grade, and dependent status when government-provided housing is not available. It is generally non-taxable. Living in government quarters, barracks, overseas housing situations, or special BAH categories can affect eligibility and amount, so always verify with your LES.",
     linkLabel: "Official BAH Info",
-    href: "https://militarypay.defense.gov/pay/allowances/bah.aspx",
+    href: "https://militarypay.defense.gov/PAY/Allowances/bah.aspx",
   },
   {
     title: "BAS",
@@ -67,7 +67,7 @@ const terms = [
     title: "Barracks / Government Quarters",
     text: "Many junior enlisted members living in government quarters do not receive the normal BAH rate. BAS may still appear, but meal deductions can reduce what is actually paid out. Always verify with your LES.",
     linkLabel: "Official BAH Info",
-    href: "https://militarypay.defense.gov/pay/allowances/bah.aspx",
+    href: "https://militarypay.defense.gov/PAY/Allowances/bah.aspx",
   },
   {
     title: "FICA",

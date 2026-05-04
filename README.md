@@ -1,90 +1,82 @@
 # ActivePayOS
 
-ActivePayOS is a simple military pay and planning website built to help service members better understand their compensation.
+ActivePayOS is a military pay and planning website built to help service members understand their compensation, housing allowance, taxable vs. non-taxable pay, and budgeting decisions.
 
-It focuses on making common pay topics easier to use and less confusing by offering clear tools for military base pay, BAH, BAS, and budgeting. The goal is not to replace official systems, but to give users a cleaner way to estimate, plan, and learn.
+The goal is simple: make military pay easier to check, explain, and plan around while keeping official sources and limitations visible.
 
-## What ActivePayOS includes
+Live site: https://activepayos.com
 
-- Military pay calculator
-- BAH lookup by ZIP code
-- BAS reference
-- Annual and monthly pay views
-- Budget spreadsheet export
-- Military-focused planning toolkits
-- Plain-English explanations of common pay terms
+## What It Includes
 
-## Who it is for
+- 2026 active-duty pay calculator
+- Base pay, BAH, BAS, taxable income, non-taxable income, and FICA breakdowns
+- BAH lookup by duty ZIP code, including ZIP+4 support
+- Barracks / government housing option for members who do not receive BAH
+- State of legal residence context for all 50 states and DC
+- Budget spreadsheet export with pay inputs and planning targets
+- Housing, PCS, and military life planning tools
+- Plain-English military pay terms
+- Public Data & Accuracy page with source and coverage notes
 
-ActivePayOS is built for:
+## Accuracy Approach
 
-- ROTC cadets and midshipmen preparing to commission
-- newly commissioned officers
-- junior enlisted service members
-- military members planning PCS moves or budgeting changes
-- anyone who wants a simpler way to understand military pay
+ActivePayOS uses versioned public reference data and keeps verification visible. The current data layer includes:
 
-## Main idea
+- DFAS 2026 base pay tables
+- DFAS BAS reference data
+- DTMO / Military Pay 2026 BAH tables
+- 2026 ZIP-to-MHA mapping
+- State tax context links and planning notes
 
-Military pay information exists, but it is often spread across multiple official websites and not always easy to understand quickly.
+The site separates verified source data from estimates. Base pay, BAS, and BAH are treated as source-backed calculator inputs. FICA, budget exports, and state tax context are planning aids and should be checked against official records.
 
-ActivePayOS brings key pay inputs into one place and presents them in a more usable format for education and planning.
+Run the pay data audit locally:
 
-## Current features
+```bash
+npm run audit:pay-data
+```
 
-### Pay calculator
-The pay calculator is the core feature of the site. It is designed to help users estimate:
+## Important Limitations
 
-- base pay
-- Basic Allowance for Housing (BAH)
-- Basic Allowance for Subsistence (BAS)
-- estimated monthly total compensation
-- estimated annual total compensation
+ActivePayOS is for education and planning only.
 
-### Budget export
-Users can export a budget spreadsheet based on their current pay inputs and planning assumptions.
+It is not an official Department of Defense, DFAS, or U.S. military website. It does not provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependent status, deductions, special pays, government quarters, meal plans, state of legal residence, and service-specific rules.
 
-### Toolkits
-ActivePayOS also includes simple toolkit pages for common military life situations, such as:
+Always verify major decisions with your Leave and Earnings Statement (LES), myPay, DFAS, and official military guidance.
 
-- just commissioned
-- junior enlisted
-- first PCS
-- just married
-- deployment
-- TSP and retirement planning
-
-## Data sources
-
-ActivePayOS uses public reference data and planning assumptions, including military pay tables and allowance information.
-
-Examples include:
-
-- DFAS pay tables
-- official BAH information
-- official allowances references
-
-These tools are built for education and planning. Users should always verify important decisions using their LES, DFAS, and official military sources.
-
-## Important disclaimer
-
-ActivePayOS is an educational and planning tool.
-
-It is **not** an official Department of Defense, DFAS, or U.S. military website. It does **not** provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependency status, deductions, special pays, government quarters, meal plans, and other service-specific factors.
-
-Always verify important decisions with your Leave and Earnings Statement (LES), DFAS, and official military guidance.
-
-## Tech stack
+## Tech Stack
 
 - Next.js
 - React
 - TypeScript
 - Tailwind CSS
+- ExcelJS
 
-## Local development
-
-Clone the repo:
+## Local Development
 
 ```bash
-git clone https://github.com/nickparker52/activepayos.git
-cd activepayos
+git clone https://github.com/nickparker52/ActivePayOS.git
+cd ActivePayOS
+npm install
+npm run dev
+```
+
+Open http://localhost:3000.
+
+## Checks
+
+Before publishing changes, run:
+
+```bash
+npm run audit:pay-data
+npm run lint
+npm run build
+```
+
+## Project Direction
+
+ActivePayOS is being built toward a community-reviewed, open-source military pay toolkit. The long-term goal is to become a trusted, transparent reference for service members planning around pay, housing, PCS moves, TSP, taxes, and common military life decisions.
+
+## License
+
+All rights reserved unless a later license file says otherwise.

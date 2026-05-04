@@ -17,7 +17,7 @@ const terms = [
     title: "BAS",
     text: "Basic Allowance for Subsistence. A food allowance. It is generally non-taxable. For many enlisted members, BAS can still be offset by meal-plan deductions depending on their situation.",
     linkLabel: "Official Allowances Info",
-    href: "https://militarypay.defense.gov/pay/ALLOWANCES/",
+    href: "https://militarypay.defense.gov/Pay-and-Allowances/Allowances/",
   },
   {
     title: "LES",

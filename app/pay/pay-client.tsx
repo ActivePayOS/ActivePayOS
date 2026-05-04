@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { getBahLookup } from "@/lib/pay/bah";
+import {
+  getStateTaxContext,
+  stateTaxContexts,
+  stateTaxReferenceLinks,
+} from "@/data/state-tax-context";
 
 type PayGrade =
   | "O-1" | "O-2" | "O-3" | "O-4" | "O-5" | "O-6" | "O-7" | "O-8" | "O-9" | "O-10"
@@ -39,59 +44,7 @@ const YOS_OPTIONS = [
 const SOCIAL_SECURITY_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
 
-const STATE_RESIDENCY_OPTIONS = [
-  "Alabama",
-  "Alaska",
-  "Arizona",
-  "Arkansas",
-  "California",
-  "Colorado",
-  "Connecticut",
-  "Delaware",
-  "District of Columbia",
-  "Florida",
-  "Georgia",
-  "Hawaii",
-  "Idaho",
-  "Illinois",
-  "Indiana",
-  "Iowa",
-  "Kansas",
-  "Kentucky",
-  "Louisiana",
-  "Maine",
-  "Maryland",
-  "Massachusetts",
-  "Michigan",
-  "Minnesota",
-  "Mississippi",
-  "Missouri",
-  "Montana",
-  "Nebraska",
-  "Nevada",
-  "New Hampshire",
-  "New Jersey",
-  "New Mexico",
-  "New York",
-  "North Carolina",
-  "North Dakota",
-  "Ohio",
-  "Oklahoma",
-  "Oregon",
-  "Pennsylvania",
-  "Rhode Island",
-  "South Carolina",
-  "South Dakota",
-  "Tennessee",
-  "Texas",
-  "Utah",
-  "Vermont",
-  "Virginia",
-  "Washington",
-  "West Virginia",
-  "Wisconsin",
-  "Wyoming",
-] as const;
+const STATE_RESIDENCY_OPTIONS = stateTaxContexts.map((item) => item.state);
 
 type BasePayData = {
   year: number;
@@ -195,6 +148,10 @@ export default function PayClient({
   const [receivesBah, setReceivesBah] = useState<boolean>(true);
   const [dependents, setDependents] = useState<boolean>(false);
   const [stateOfLegalResidence, setStateOfLegalResidence] = useState<string>("");
+  const stateTaxContext = useMemo(
+    () => getStateTaxContext(stateOfLegalResidence),
+    [stateOfLegalResidence]
+  );
 
   // "Premium export" knobs (hidden for now, but ready)
   const [tspPct] = useState<number>(0.10);
@@ -457,7 +414,7 @@ export default function PayClient({
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                For planning context only. State withholding is not estimated in this calculator yet.
+                Used for state tax context. State withholding is not subtracted from the estimate yet.
               </p>
             </div>
 
@@ -596,6 +553,69 @@ export default function PayClient({
               depends on federal withholding, state of legal residence, TSP contributions, SGLI,
               and any special pays or deductions on your LES.
             </p>
+          </div>
+
+          <div className="mt-6 rounded-2xl border bg-white p-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-sm font-medium">State Tax Context</div>
+                <div className="mt-1 text-xs text-gray-500">
+                  Based on state of legal residence, not BAH duty ZIP.
+                </div>
+              </div>
+              <span className="w-fit rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
+                Not included in total
+              </span>
+            </div>
+
+            {stateTaxContext ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="text-lg font-semibold">
+                    {stateTaxContext.state} ({stateTaxContext.abbreviation})
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-gray-700">
+                    {stateTaxContext.headline}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">
+                    {stateTaxContext.summary}
+                  </p>
+                </div>
+
+                <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-gray-600">
+                  {stateTaxContext.planningNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <a
+                    href={stateTaxContext.stateTaxAgencyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-2 hover:text-gray-700"
+                  >
+                    State tax agency -&gt;
+                  </a>
+                  {stateTaxReferenceLinks.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium underline underline-offset-2 hover:text-gray-700"
+                    >
+                      {link.label} -&gt;
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-gray-600">
+                Select your state of legal residence to see state-specific planning context.
+                Your LES should show the state you are claiming for tax withholding.
+              </p>
+            )}
           </div>
 
           <div className="mt-6 space-y-4">

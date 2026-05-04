@@ -58,6 +58,12 @@ const terms = [
     text: "A status that affects some pay and allowance calculations, especially BAH. It does not simply mean 'married' in every context, so verify with your records and LES.",
   },
   {
+    title: "State of Legal Residence",
+    text: "The state you claim as your permanent legal residence for tax purposes. For active-duty members, this may differ from duty station, BAH ZIP, and home of record. Your LES should show the state being used for state tax withholding.",
+    linkLabel: "Military OneSource Tax Guidance",
+    href: "https://www.militaryonesource.mil/resources/millife-guides/tax-preparation-services/",
+  },
+  {
     title: "Barracks / Government Quarters",
     text: "Many junior enlisted members living in government quarters do not receive the normal BAH rate. BAS may still appear, but meal deductions can reduce what is actually paid out. Always verify with your LES.",
     linkLabel: "Official BAH Info",

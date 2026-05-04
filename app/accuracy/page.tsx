@@ -148,7 +148,7 @@ export default function AccuracyPage() {
           <h2 className="text-xl font-semibold">Known Limits</h2>
           <ul className="mt-5 list-disc space-y-3 pl-5 text-sm leading-6 text-gray-600">
             <li>Federal withholding is not estimated yet.</li>
-            <li>State income tax is not estimated yet.</li>
+            <li>State income tax context is shown when a state is selected, but state withholding is not subtracted from pay totals yet.</li>
             <li>Special pays, bonuses, SGLI, allotments, debts, meal deductions, and TSP deductions are not included in the main pay total.</li>
             <li>Overseas housing, OHA, COLA, and some territory or non-standard ZIP cases may not use standard local BAH.</li>
             <li>Your LES, orders, myPay settings, DFAS, and official finance guidance control over any estimate shown here.</li>

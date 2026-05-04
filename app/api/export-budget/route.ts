@@ -76,8 +76,8 @@ export async function POST(req: NextRequest) {
     process.cwd(),
     "public",
     "templates",
-    "officeros-budget-template-lite.xlsx"
-    );
+    "activepayos-budget-template.xlsx"
+  );
 
   try {
     await fs.access(templatePath);

@@ -40,6 +40,10 @@ function zipToMha(zipInput: string): string | null {
   return typeof mha === "string" ? mha : null;
 }
 
+function gradeForBahTable(grade: PayGrade): PayGrade {
+  return grade === "O-8" || grade === "O-9" || grade === "O-10" ? "O-7" : grade;
+}
+
 export function getBahRate(
   zip: string,
   grade: PayGrade,
@@ -58,6 +62,6 @@ export function getBahRate(
   const record = dataset.ratesByMha[mha];
   if (!record) return null;
 
-  const rate = record?.rates?.[grade];
+  const rate = record?.rates?.[gradeForBahTable(grade)];
   return typeof rate === "number" ? rate : null;
 }

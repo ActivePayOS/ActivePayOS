@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getBahRate } from "@/lib/pay/bah";
+import { getBahLookup } from "@/lib/pay/bah";
 
 type PayGrade =
   | "O-1" | "O-2" | "O-3" | "O-4" | "O-5" | "O-6" | "O-7" | "O-8" | "O-9" | "O-10"
@@ -213,16 +213,22 @@ export default function PayClient({
     [bas, year, grade]
   );
 
-  const bahRate = useMemo(() => getBahRate(zip, grade, dependents), [zip, grade, dependents]);
+  const bahLookup = useMemo(() => getBahLookup(zip, grade, dependents), [zip, grade, dependents]);
+  const bahRate = bahLookup.rate;
   const bah = receivesBah ? bahRate : 0;
 
   const bahError = useMemo(() => {
     if (!receivesBah) return null;
     if (!zip || zip.trim().length === 0) return null;
-    return bahRate === null
-      ? "BAH data unavailable for this ZIP (invalid ZIP, unsupported territory/APO, or missing dataset). Try a nearby ZIP."
-      : null;
-  }, [receivesBah, zip, bahRate]);
+    if (bahLookup.status === "ok") return null;
+    if (bahLookup.status === "invalid_zip") {
+      return "Enter a valid 5-digit ZIP code, or ZIP+4 format like 02139-1234.";
+    }
+    if (bahLookup.status === "nonstandard_mha") {
+      return "This ZIP is in the official 2026 ZIP-to-MHA file, but it maps to a non-standard area that is not in the local BAH rate table. Standard BAH may not apply; check OHA/non-locality guidance or your finance office.";
+    }
+    return "This ZIP is not available in the 2026 local BAH rate data used here. Check the ZIP, try ZIP+4 only if valid, or verify with the official BAH calculator.";
+  }, [receivesBah, zip, bahLookup.status]);
 
   const taxableIncomeMonthly = basePay;
   const nonTaxableIncomeMonthly = (bah ?? 0) + basRate;

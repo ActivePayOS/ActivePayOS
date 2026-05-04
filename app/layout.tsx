@@ -79,6 +79,9 @@ export default function RootLayout({
               <Link href="/terms" className="hover:underline">
                 Terms Explained
               </Link>
+              <Link href="/accuracy" className="hover:underline">
+                Accuracy
+              </Link>
               <Link href="/about" className="hover:underline">
                 About
               </Link>
@@ -104,6 +107,9 @@ export default function RootLayout({
               <div className="flex items-center gap-4">
                 <Link href="/contact" className="hover:underline">
                   Contact
+                </Link>
+                <Link href="/accuracy" className="hover:underline">
+                  Accuracy
                 </Link>
                
               </div>

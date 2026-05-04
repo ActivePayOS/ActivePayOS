@@ -9,6 +9,7 @@
     "update:basepay": "node scripts/update_basepay_2026.mjs",
     "update:bas": "node scripts/update_bas.mjs",
     "validate:basepay": "node scripts/validate_basepay_2026.mjs",
+    "audit:pay-data": "node scripts/audit-pay-data.mjs",
     "bah:zipmha": "node scripts/normalize_zipmha_2026.mjs",
     "bah:verify": "node scripts/verify_bah_2026.mjs",
     "lint": "eslint"

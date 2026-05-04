@@ -31,17 +31,84 @@ function normalizeZip(input: string): string | null {
   return m ? m[1] : null;
 }
 
-function zipToMha(zipInput: string): string | null {
-  const zip = normalizeZip(zipInput);
-  if (!zip) return null;
-
-  // zipMha.json = { year, generatedAt, zipToMha: { "02139": "MA120", ... } }
-  const mha = zipMhaDataset.zipToMha[zip];
-  return typeof mha === "string" ? mha : null;
-}
-
 function gradeForBahTable(grade: PayGrade): PayGrade {
   return grade === "O-8" || grade === "O-9" || grade === "O-10" ? "O-7" : grade;
+}
+
+export type BahLookupResult = {
+  rate: number | null;
+  mha: string | null;
+  normalizedZip: string | null;
+  status:
+    | "ok"
+    | "invalid_zip"
+    | "zip_not_found"
+    | "nonstandard_mha"
+    | "missing_rate_record"
+    | "missing_grade_rate";
+};
+
+export function getBahLookup(
+  zipInput: string,
+  grade: PayGrade,
+  withDependents: boolean
+): BahLookupResult {
+  const normalizedZip = normalizeZip(zipInput);
+  if (!normalizedZip) {
+    return {
+      rate: null,
+      mha: null,
+      normalizedZip: null,
+      status: "invalid_zip",
+    };
+  }
+
+  const mha = zipMhaDataset.zipToMha[normalizedZip];
+  if (typeof mha !== "string") {
+    return {
+      rate: null,
+      mha: null,
+      normalizedZip,
+      status: "zip_not_found",
+    };
+  }
+
+  if (mha.startsWith("XX")) {
+    return {
+      rate: null,
+      mha,
+      normalizedZip,
+      status: "nonstandard_mha",
+    };
+  }
+
+  const dataset = withDependents ? bahWithDataset : bahWithoutDataset;
+  const record = dataset.ratesByMha[mha];
+  if (!record) {
+    return {
+      rate: null,
+      mha,
+      normalizedZip,
+      status: "missing_rate_record",
+    };
+  }
+
+  const rate = record?.rates?.[gradeForBahTable(grade)];
+  if (typeof rate !== "number") {
+    return {
+      rate: null,
+      mha,
+      normalizedZip,
+      status: "missing_grade_rate",
+    };
+  }
+
+  return {
+    rate,
+    mha,
+    normalizedZip,
+    status: "ok",
+  };
 }
 
 export function getBahRate(
@@ -49,19 +116,5 @@ export function getBahRate(
   grade: PayGrade,
   withDependents: boolean
 ): number | null {
-  const mha = zipToMha(zip);
-
-  // ZIP invalid or not found in zip-to-MHA mapping
-  if (!mha) return null;
-
-  // Placeholder / non-standard MHA codes (e.g., Guam 969xx -> XX499)
-  // Not present in DTMO BAH tables, so treat as unsupported.
-  if (mha.startsWith("XX")) return null;
-
-  const dataset = withDependents ? bahWithDataset : bahWithoutDataset;
-  const record = dataset.ratesByMha[mha];
-  if (!record) return null;
-
-  const rate = record?.rates?.[gradeForBahTable(grade)];
-  return typeof rate === "number" ? rate : null;
+  return getBahLookup(zip, grade, withDependents).rate;
 }

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import xlsx from "xlsx";
+import ExcelJS from "exceljs";
 
 const YEAR = 2026;
 
@@ -18,6 +18,14 @@ function mapColToPayGrade(col) {
 }
 
 function toStr(v) {
+  if (v && typeof v === "object") {
+    if ("result" in v) return toStr(v.result);
+    if ("text" in v) return toStr(v.text);
+    if ("richText" in v && Array.isArray(v.richText)) {
+      return v.richText.map((part) => part?.text ?? "").join("").trim();
+    }
+  }
+
   return String(v ?? "").replace(/\u00A0/g, " ").trim(); // kill NBSP
 }
 
@@ -33,12 +41,26 @@ function findHeaderRow(grid) {
   return -1;
 }
 
+function worksheetToGrid(ws) {
+  const grid = [];
+  const columnCount = ws.columnCount;
+
+  ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    const values = [];
+    for (let col = 1; col <= columnCount; col++) {
+      values.push(row.getCell(col).value);
+    }
+    grid[rowNumber - 1] = values;
+  });
+
+  return grid;
+}
+
 function parseSheet(wb, sheetName) {
-  const ws = wb.Sheets[sheetName];
+  const ws = wb.getWorksheet(sheetName);
   if (!ws) throw new Error(`Sheet not found: ${sheetName}`);
 
-  // Read as array-of-arrays (this is the safest approach for weird Excel formats)
-  const grid = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
+  const grid = worksheetToGrid(ws);
 
   if (!Array.isArray(grid) || grid.length < 5) {
     throw new Error(`Sheet ${sheetName} looks empty or malformed`);
@@ -126,12 +148,13 @@ function parseSheet(wb, sheetName) {
   return out;
 }
 
-function main() {
+async function main() {
   if (!fs.existsSync(RAW_XLSX)) {
     throw new Error(`Missing raw Excel at: ${RAW_XLSX}`);
   }
 
-  const wb = xlsx.readFile(RAW_XLSX);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(RAW_XLSX);
 
   const withJson = parseSheet(wb, "With");
   const withoutJson = parseSheet(wb, "Without");
@@ -147,4 +170,7 @@ function main() {
   );
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

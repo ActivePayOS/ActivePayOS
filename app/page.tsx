@@ -23,17 +23,24 @@ export default function Home() {
           <BrandLogo size="hero" />
         </h1>
         <p className="mt-4 max-w-2xl text-gray-600">
-        Military pay & benefits tools - accurate, visual, and simple. Built for active duty.
-        <br />
-        <br />
-        Here to help. 
-      </p>
+          Military pay & benefits tools - accurate, visual, and simple. Built for
+          active duty.
+          <br />
+          <br />
+          Here to help.
+        </p>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <a className="rounded-xl bg-[var(--brand-blue)] px-5 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[var(--brand-blue-dark)]" href="/pay">
+          <a
+            className="rounded-xl bg-[var(--brand-blue)] px-5 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[var(--brand-blue-dark)]"
+            href="/pay"
+          >
             Open Pay Calculator -&gt;
           </a>
-          <a className="rounded-xl border px-5 py-3 text-sm font-medium transition hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]" href="/about">
+          <a
+            className="rounded-xl border px-5 py-3 text-sm font-medium transition hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]"
+            href="/about"
+          >
             Why ActivePayOS
           </a>
         </div>

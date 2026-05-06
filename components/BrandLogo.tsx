@@ -16,7 +16,10 @@ export default function BrandLogo({
     : "text-xl font-semibold tracking-normal";
 
   const logo = (
-    <span className="brand-logo inline-flex min-w-0 items-center gap-3" aria-label="ActivePayOS">
+    <span
+      className="brand-logo inline-flex min-w-0 items-center gap-3"
+      aria-label="ActivePayOS"
+    >
       <svg
         className={`${markSize} shrink-0`}
         viewBox="0 0 96 96"
@@ -44,7 +47,10 @@ export default function BrandLogo({
   );
 
   return (
-    <Link href={href} className="inline-flex w-fit max-w-full items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]">
+    <Link
+      href={href}
+      className="inline-flex w-fit max-w-full items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]"
+    >
       {logo}
     </Link>
   );

@@ -41,9 +41,6 @@ export const metadata: Metadata = {
       "Military pay and planning tools for base pay, BAH, BAS, budgeting, and military life toolkits.",
   },
 };
-//Important
-
-// If your real deployed URL is not https://activepayos.com, change these three places before saving:
 
 export default function RootLayout({
   children,
@@ -68,8 +65,8 @@ export default function RootLayout({
                 Housing
               </Link>
               <Link href="/pcs" className="hover:underline">
-              PCS
-            </Link>
+                PCS
+              </Link>
               <Link href="/toolkits" className="hover:underline">
                 Toolkits
               </Link>

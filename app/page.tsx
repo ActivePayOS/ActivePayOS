@@ -1,3 +1,5 @@
+import BrandLogo from "@/components/BrandLogo";
+
 export default function Home() {
   const commitments = [
     {
@@ -16,8 +18,10 @@ export default function Home() {
 
   return (
     <main className="space-y-10">
-      <section className="rounded-3xl border bg-white p-10 shadow-sm">
-        <h1 className="text-4xl font-semibold tracking-tight">ActivePayOS</h1>
+      <section className="rounded-3xl border bg-white p-6 shadow-sm sm:p-10">
+        <h1>
+          <BrandLogo size="hero" />
+        </h1>
         <p className="mt-4 max-w-2xl text-gray-600">
         Military pay & benefits tools - accurate, visual, and simple. Built for active duty.
         <br />
@@ -26,10 +30,10 @@ export default function Home() {
       </p>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <a className="rounded-xl bg-black px-5 py-3 text-sm font-medium text-white" href="/pay">
+          <a className="rounded-xl bg-[var(--brand-blue)] px-5 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-[var(--brand-blue-dark)]" href="/pay">
             Open Pay Calculator -&gt;
           </a>
-          <a className="rounded-xl border px-5 py-3 text-sm font-medium" href="/about">
+          <a className="rounded-xl border px-5 py-3 text-sm font-medium transition hover:border-[var(--brand-blue)] hover:text-[var(--brand-blue)]" href="/about">
             Why ActivePayOS
           </a>
         </div>

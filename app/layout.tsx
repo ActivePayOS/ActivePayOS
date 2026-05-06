@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -51,14 +52,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body
-        className="bg-gray-50 text-gray-900 antialiased"
-      >
+      <body className="bg-gray-50 text-gray-900 antialiased">
         <div className="mx-auto max-w-6xl px-6">
           <header className="flex flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
-            <Link href="/" className="text-xl font-semibold tracking-tight">
-              ActivePayOS
-            </Link>
+            <BrandLogo />
 
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium">
               <Link href="/" className="hover:underline">
@@ -88,7 +85,7 @@ export default function RootLayout({
               <Link href="/contact" className="hover:underline">
                 Contact
               </Link>
-              <Link href="/privacy" className="hover:text-gray-900">
+              <Link href="/privacy" className="hover:text-[var(--brand-blue)]">
                 Privacy
               </Link>
             </nav>

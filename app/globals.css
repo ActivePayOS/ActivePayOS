@@ -1,9 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
-  --background: #f5f5f5;
-  --foreground: #111111;
+  color-scheme: light dark;
+  --background: #f7f9fc;
+  --foreground: #07183b;
+  --brand-blue: #0b5cff;
+  --brand-blue-dark: #074bd3;
+  --brand-ink: #07183b;
+  --brand-surface: #ffffff;
+  --card: #ffffff;
+  --card-muted: #f1f5f9;
+  --line: #d8e0ec;
+  --muted: #526176;
 }
 
 @theme inline {
@@ -18,4 +26,113 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand-blue) 22%, transparent);
+}
+
+@layer base {
+  a,
+  button,
+  input,
+  select {
+    transition-duration: 150ms;
+    transition-property: background-color, border-color, color, box-shadow, opacity;
+  }
+
+  input,
+  select,
+  textarea {
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .bg-gray-50 {
+    background-color: var(--background);
+  }
+
+  .bg-white {
+    background-color: var(--card);
+  }
+
+  .bg-gray-100,
+  .bg-gray-200 {
+    background-color: var(--card-muted);
+  }
+
+  .text-gray-900 {
+    color: var(--foreground);
+  }
+
+  .text-gray-700 {
+    color: color-mix(in srgb, var(--foreground) 78%, var(--muted));
+  }
+
+  .text-gray-600,
+  .text-gray-500 {
+    color: var(--muted);
+  }
+
+  .border,
+  .border-t,
+  .border-b,
+  .border-l {
+    border-color: var(--line);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #050914;
+    --foreground: #f7fbff;
+    --brand-blue: #3b82ff;
+    --brand-blue-dark: #1d6cff;
+    --brand-ink: #f7fbff;
+    --brand-surface: #050914;
+    --card: #0c1424;
+    --card-muted: #111d31;
+    --line: #263852;
+    --muted: #b7c4d6;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(59, 130, 255, 0.16), transparent 28rem),
+      var(--background);
+  }
+
+  .shadow-sm,
+  .shadow-md {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .text-gray-400 {
+    color: #8da0b9;
+  }
+
+  .bg-black {
+    background-color: var(--brand-blue);
+  }
+
+  .hover\:bg-gray-50:hover,
+  .hover\:bg-gray-100:hover,
+  .hover\:bg-gray-800:hover {
+    background-color: color-mix(in srgb, var(--brand-blue) 18%, var(--card));
+  }
+
+  .hover\:text-gray-700:hover,
+  .hover\:text-gray-900:hover,
+  .hover\:text-black:hover {
+    color: var(--brand-blue);
+  }
+
+  .focus\:ring-black\/20:focus {
+    --tw-ring-color: color-mix(in srgb, var(--brand-blue) 40%, transparent);
+  }
 }

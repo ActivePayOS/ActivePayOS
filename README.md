@@ -75,8 +75,10 @@ npm run build
 
 ## Project Direction
 
-ActivePayOS is being built toward a community-reviewed, open-source military pay toolkit. The long-term goal is to become a trusted, transparent reference for service members planning around pay, housing, PCS moves, TSP, taxes, and common military life decisions.
+ActivePayOS is being built in public as a community-reviewed military pay toolkit. The long-term goal is to become a trusted, transparent reference for service members planning around pay, housing, PCS moves, TSP, taxes, and common military life decisions.
+
+The repository is public so people can inspect the source, verify the data approach, report issues, and propose improvements. Public visibility is not permission to copy, host, rebrand, commercialize, or republish ActivePayOS or substantial portions of it as another product.
 
 ## License
 
-All rights reserved unless a later license file says otherwise.
+Source available for review and transparency only. All rights reserved. See [LICENSE](LICENSE).

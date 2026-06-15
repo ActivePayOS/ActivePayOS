@@ -128,7 +128,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
   }
 
   const selectCls =
-    "mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20";
+    "field mt-1 w-full rounded-xl px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20";
 
   return (
     <main className="mx-auto max-w-5xl p-6 md:p-10 space-y-8">
@@ -238,7 +238,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
             aria-label="Export format"
             value={format}
             onChange={(e) => setFormat(e.target.value as ExportFormat)}
-            className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+            className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
           >
             {EXPORT_FORMATS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>

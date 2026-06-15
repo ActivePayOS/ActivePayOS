@@ -232,6 +232,13 @@ export default function PayClient({
     takeHomeBeforeWithholding: estimatedTakeHomeBeforeWithholding * 12,
   };
 
+  const denomTotal = total > 0 ? total : 1;
+  const pctBase = (basePay / denomTotal) * 100;
+  const pctBah = ((bah ?? 0) / denomTotal) * 100;
+  const pctBas = (basRate / denomTotal) * 100;
+  const pctTaxable = (taxableIncomeMonthly / denomTotal) * 100;
+  const pctNonTax = (nonTaxableIncomeMonthly / denomTotal) * 100;
+
   const parts = useMemo(() => {
     const p: { label: string; value: number | null; hint: string }[] = [
       { label: "Base Pay", value: basePay, hint: "Taxable. From DFAS pay tables (grade + YOS)." },
@@ -256,6 +263,7 @@ export default function PayClient({
   const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [pdfLayout, setPdfLayout] = useState<PdfLayout>("classic");
+  const [resultsView, setResultsView] = useState<"summary" | "visuals">("summary");
 
   async function downloadBudget() {
     try {
@@ -360,7 +368,7 @@ export default function PayClient({
               id="export-format"
               value={format}
               onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
               title="Choose the file type to download"
             >
               {EXPORT_FORMATS.map((o) => (
@@ -375,7 +383,7 @@ export default function PayClient({
                 aria-label="PDF layout"
                 value={pdfLayout}
                 onChange={(e) => setPdfLayout(e.target.value as PdfLayout)}
-                className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+                className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
                 title="Choose a PDF layout"
               >
                 {PDF_LAYOUTS.map((o) => (
@@ -410,7 +418,7 @@ export default function PayClient({
             <div>
               <label className="block text-sm font-medium">Year</label>
               <select
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value) as (typeof YEARS)[number])}
               >
@@ -425,7 +433,7 @@ export default function PayClient({
             <div>
               <label className="block text-sm font-medium">Pay Grade</label>
               <select
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={grade}
                 onChange={(e) => setGrade(e.target.value as PayGrade)}
               >
@@ -447,7 +455,7 @@ export default function PayClient({
                 Years of Service (YOS)
               </label>
               <select
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={yos}
                 onChange={(e) => setYos(Number(e.target.value))}
               >
@@ -466,7 +474,7 @@ export default function PayClient({
               </label>
               <select
                 id="state-of-legal-residence"
-                className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={stateOfLegalResidence}
                 onChange={(e) => setStateOfLegalResidence(e.target.value)}
               >
@@ -488,7 +496,7 @@ export default function PayClient({
                   Duty ZIP (for BAH)
                 </label>
                 <input
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2"
+                  className="field mt-1 w-full rounded-xl px-3 py-2"
                   placeholder="02139"
                   value={zip}
                   disabled={!receivesBah}
@@ -580,6 +588,119 @@ export default function PayClient({
             </p>
           </div>
 
+          {/* Results view tabs */}
+          <div className="mt-6 inline-flex rounded-full border p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setResultsView("summary")}
+              className={`rounded-full px-4 py-1.5 font-medium transition ${
+                resultsView === "summary"
+                  ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Summary
+            </button>
+            <button
+              type="button"
+              onClick={() => setResultsView("visuals")}
+              className={`rounded-full px-4 py-1.5 font-medium transition ${
+                resultsView === "visuals"
+                  ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Visuals
+            </button>
+          </div>
+
+          {resultsView === "visuals" && (
+            <div className="mt-6 space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2 sm:items-center">
+                <div className="flex items-center justify-center">
+                  <div className="relative h-44 w-44">
+                    <div
+                      className="h-full w-full rounded-full"
+                      style={{
+                        background: `conic-gradient(var(--brand-blue) 0 ${pctBase}%, #10b981 ${pctBase}% ${pctBase + pctBah}%, #f59e0b ${pctBase + pctBah}% 100%)`,
+                      }}
+                    />
+                    <div className="absolute inset-[20%] flex flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
+                      <span className="text-xs text-gray-500">Monthly</span>
+                      <span className="text-lg font-bold">{fmtUSD0(total)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    { label: "Base Pay", value: basePay, color: "var(--brand-blue)", pct: pctBase },
+                    { label: "BAH", value: bah ?? 0, color: "#10b981", pct: pctBah },
+                    { label: "BAS", value: basRate, color: "#f59e0b", pct: pctBas },
+                  ].map((s) => (
+                    <div key={s.label} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span
+                          className="inline-block h-3 w-3 rounded-full"
+                          style={{ backgroundColor: s.color }}
+                        />
+                        {s.label}
+                      </div>
+                      <div className="text-sm font-semibold">
+                        {fmtUSD(s.value)} <span className="text-gray-500">· {s.pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-medium">Taxable vs non-taxable (monthly)</span>
+                  <span className="text-gray-500">{pctNonTax.toFixed(0)}% non-taxable</span>
+                </div>
+                <div className="flex h-4 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className="h-full bg-[var(--brand-blue)]"
+                    style={{ width: `${pctTaxable}%` }}
+                    title="Taxable"
+                  />
+                  <div
+                    className="h-full bg-emerald-500"
+                    style={{ width: `${pctNonTax}%` }}
+                    title="Non-taxable"
+                  />
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-gray-500">
+                  <span>Taxable {fmtUSD(taxableIncomeMonthly)}</span>
+                  <span>Non-taxable {fmtUSD(nonTaxableIncomeMonthly)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Annual total</span>
+                  <span className="text-lg font-bold">{fmtUSD0(annual.total)}</span>
+                </div>
+                <div className="mt-3 flex h-3 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div className="h-full bg-[var(--brand-blue)]" style={{ width: `${pctTaxable}%` }} />
+                  <div className="h-full bg-emerald-500" style={{ width: `${pctNonTax}%` }} />
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  {fmtUSD0(annual.taxableIncome)} taxable + {fmtUSD0(annual.nonTaxableIncome)} non-taxable
+                  per year.
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Visuals reflect your current inputs. BAH is included only when a valid duty ZIP is
+                entered.
+              </p>
+            </div>
+          )}
+
+          {resultsView === "summary" && (
+            <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border p-4">
               <div className="text-sm font-medium">Taxable Income</div>
@@ -728,6 +849,8 @@ export default function PayClient({
               );
             })}
           </div>
+            </>
+          )}
         </section>
       </div>
 

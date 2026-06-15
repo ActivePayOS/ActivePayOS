@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -50,6 +51,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-gray-50 text-gray-900 antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('apo-theme');if(t==='neon'){document.documentElement.setAttribute('data-theme','neon');}}catch(e){}})();",
+          }}
+        />
         <div className="mx-auto max-w-6xl px-6">
           <header className="flex flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
             <BrandLogo />
@@ -73,6 +80,7 @@ export default function RootLayout({
               <Link href="/about" className="hover:text-[var(--brand-blue)]">
                 About
               </Link>
+              <ThemeToggle />
             </nav>
           </header>
 

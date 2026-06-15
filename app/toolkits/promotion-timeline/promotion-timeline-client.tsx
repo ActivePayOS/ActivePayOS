@@ -94,11 +94,11 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
   const comp = useMemo(
     () =>
       buildCompensationProjection(
-        { branch, track, startGrade, contractYears },
+        { branch, track, startGrade, contractYears, accessionDate },
         basepay,
         { zip, withDependents: dependents }
       ),
-    [branch, track, startGrade, contractYears, basepay, zip, dependents]
+    [branch, track, startGrade, contractYears, accessionDate, basepay, zip, dependents]
   );
 
   async function downloadTimeline() {
@@ -366,6 +366,106 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           BAS uses the {comp.year} {track === "officer" ? "officer" : "enlisted"} rate. Planning
           estimates only.
         </p>
+      </section>
+
+      {/* Retirement value: Legacy High-3 vs BRS trade-off */}
+      <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">Retirement value at 20 years</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              A 20-year career also earns a lifetime pension — the biggest number most plans leave
+              out. Here is the trade-off between the two military retirement systems.
+            </p>
+          </div>
+          <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-600">
+            High-3 basis: {usd(comp.retirement.high3Monthly)}/mo
+          </span>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="text-sm font-medium text-gray-700">
+            Estimated 20-year value (service pay + {comp.retirement.payoutYears}-yr pension)
+          </div>
+          <div className="mt-1 text-3xl font-bold tracking-tight">
+            {usd(comp.toRetire.total + Math.min(comp.retirement.legacy.lifetimeValue, comp.retirement.brs.lifetimeValue))}
+            {" – "}
+            {usd(comp.toRetire.total + Math.max(comp.retirement.legacy.lifetimeValue, comp.retirement.brs.lifetimeValue))}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            {usd(comp.toRetire.total)} in pay earned over 20 years, plus an illustrative{" "}
+            {comp.retirement.payoutYears}-year pension. The range spans the two retirement systems below.
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {[comp.retirement.legacy, comp.retirement.brs].map((sys) => {
+            const isYours = sys.key === comp.retirement.yourSystem;
+            return (
+              <div
+                key={sys.key}
+                className={`rounded-2xl border p-5 ${isYours ? "border-emerald-300 ring-1 ring-emerald-200" : ""}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-gray-900">{sys.label}</div>
+                  {isYours && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                      Your system
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 text-2xl font-bold tracking-tight">{usd(sys.monthlyPension)}/mo</div>
+                <div className="mt-0.5 text-xs text-gray-500">
+                  {sys.multiplierPct.toFixed(0)}% of High-3 · {usd(sys.annualPension)}/yr
+                </div>
+
+                <dl className="mt-4 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-gray-600">{comp.retirement.payoutYears}-yr pension</dt>
+                    <dd className="font-medium text-gray-900">{usd(sys.pensionPayout)}</dd>
+                  </div>
+                  {sys.key === "brs" && (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-gray-600">Gov TSP match (with growth)</dt>
+                        <dd className="font-medium text-gray-900">{usd(sys.tspGovWithGrowth)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-gray-600">Continuation pay (est.)</dt>
+                        <dd className="font-medium text-gray-900">{usd(sys.continuationPay)}</dd>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between gap-3 border-t pt-1.5">
+                    <dt className="font-medium text-gray-900">Illustrative total</dt>
+                    <dd className="font-bold text-gray-900">{usd(sys.lifetimeValue)}</dd>
+                  </div>
+                </dl>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 rounded-2xl border bg-gray-50 p-4 text-xs leading-5 text-gray-600">
+          <div className="font-medium text-gray-900">The trade-off</div>
+          <p className="mt-1">
+            <strong>Legacy High-3</strong> pays a larger pension for life (50% vs 40% of your High-3
+            base at 20 years) but has no government TSP match. <strong>BRS</strong> trades a smaller
+            pension for a portable, invested TSP match you keep even if you separate before 20 years,
+            plus continuation pay around the 12-year mark. Over a full 20-year career the Legacy
+            pension usually leads on guaranteed income; BRS can catch up or pull ahead when TSP
+            returns are strong and you value portability. Members who entered on or after Jan 1, 2018
+            are under BRS; Legacy generally applies to those who entered before 2018.
+          </p>
+          <p className="mt-2">
+            Estimates assume reaching 20 years at the projected grade, a {comp.retirement.payoutYears}-year
+            pension with no COLA, and about {comp.retirement.tspGrowthPct.toFixed(0)}% average annual
+            growth on the government TSP match. Pensions use your <em>High-3</em> (average of the
+            highest 36 months of base pay). Continuation pay varies by branch and year
+            ({comp.retirement.continuationMultiple}×–13× monthly base). Planning estimates only —
+            verify with DFAS, the TSP, and your branch.
+          </p>
+        </div>
       </section>
 
       {/* Plan the raise (merged from the Promotion Pay Planner) */}

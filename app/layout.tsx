@@ -70,6 +70,9 @@ export default function RootLayout({
               <Link href="/toolkits" className="hover:text-[var(--brand-blue)]">
                 Toolkits
               </Link>
+              <Link href="/about" className="hover:text-[var(--brand-blue)]">
+                About
+              </Link>
             </nav>
           </header>
 
@@ -77,10 +80,9 @@ export default function RootLayout({
 
           <footer className="border-t py-8 text-xs text-gray-500">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                (c) {new Date().getFullYear()} ActivePayOS. All rights reserved. Not affiliated with the U.S. Department of Defense.
-                <br />
-                For educational purposes only - verify financial decisions with DFAS and official sources.
+              <div className="font-medium text-gray-700">
+                © {new Date().getFullYear()} ActivePayOS — built by the military community, for the
+                military community.
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -103,6 +105,38 @@ export default function RootLayout({
                   Privacy
                 </Link>
               </div>
+            </div>
+
+            <div className="mt-6 space-y-3 border-t pt-6 leading-5">
+              <p className="font-semibold text-gray-600">
+                Not official U.S. Government data. For educational and planning purposes only.
+              </p>
+              <p>
+                ActivePayOS is an independent, open-source project and is not affiliated with,
+                endorsed by, or connected to the U.S. Department of Defense, DFAS, the VA, or any
+                branch of the U.S. military. Pay, BAH, BAS, retirement, and benefit figures are
+                estimates generated from public U.S. Government reference data and may not reflect
+                your actual entitlements.
+              </p>
+              <p>
+                <strong>Disclaimer:</strong> The information provided on ActivePayOS is for general
+                informational and educational purposes only and does not constitute financial,
+                investment, tax, retirement, or legal advice. ActivePayOS is not a registered
+                financial advisor, broker-dealer, or tax professional, and no advisor-client or
+                fiduciary relationship is created by your use of this site.
+              </p>
+              <p>
+                Investing and financial decisions involve risk, including the possible loss of
+                principal. Projected values, retirement comparisons, and growth assumptions are
+                illustrative and are not guarantees of future results. Always verify your numbers
+                against your LES, myPay, and DFAS, and consult a qualified professional before making
+                any financial, tax, career, or relocation decision.
+              </p>
+              <p>
+                By using ActivePayOS, you agree that the project, its maintainers, and contributors
+                are not responsible or liable for any loss or damage arising from your use of this
+                information.
+              </p>
             </div>
           </footer>
         </div>

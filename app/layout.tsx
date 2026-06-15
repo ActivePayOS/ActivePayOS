@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { GITHUB_REPO } from "@/components/ContributeCTA";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -112,6 +113,14 @@ export default function RootLayout({
                 <Link href="/privacy" className="hover:underline">
                   Privacy
                 </Link>
+                <a
+                  href={GITHUB_REPO}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline"
+                >
+                  GitHub
+                </a>
               </div>
             </div>
 

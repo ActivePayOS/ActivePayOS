@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ContributeCTA from "@/components/ContributeCTA";
 
 export const metadata: Metadata = {
   title: "About",
@@ -101,6 +102,8 @@ export default function AboutPage() {
           — Two lieutenants who decided to build the tool we wish we had.
         </p>
       </section>
+
+      <ContributeCTA />
 
       <section className="rounded-2xl border bg-gray-50 p-5 text-xs leading-5 text-gray-500">
         ActivePayOS is an independent, educational planning tool. It is not an official Department of

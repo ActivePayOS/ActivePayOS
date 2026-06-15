@@ -41,7 +41,7 @@ export const retirementTsp: Toolkit = {
       title: "ActivePayOS Actions",
       actions: [
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Make TSP a line item" },
-        { label: "Promotion Pay Planner", href: "/toolkits/promotion-planner", note: "Auto-allocate raises" },
+        { label: "Promotion & Milestone Timeline", href: "/toolkits/promotion-timeline", note: "Plan the raise at each step" },
       ],
     },
     {

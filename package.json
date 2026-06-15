@@ -2,7 +2,16 @@
   "name": "activepayos",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-or-later",
+  "author": "ActivePayOS contributors",
+  "contributors": [
+    "Simon Gott",
+    "Nick Parker"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nickparker52/ActivePayOS.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -19,6 +28,7 @@
     "cheerio": "^1.2.0",
     "exceljs": "^4.4.0",
     "next": "^16.2.5",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

@@ -1,14 +1,7 @@
-﻿import PayClient from "./pay-client";
+import { redirect } from "next/navigation";
 
-import basepay2026 from "@/data/basepay/2026.json";
-import bas2026 from "@/data/bas/2026.json";
-
+// The Pay Calculator now lives on the home page; keep this URL working for any
+// existing links and bookmarks.
 export default function PayPage() {
-  return (
-    <PayClient
-      initialYear={2026}
-      basepay={basepay2026}
-      bas={bas2026}
-    />
-  );
+  redirect("/");
 }

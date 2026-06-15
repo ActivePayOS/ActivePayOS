@@ -2,8 +2,14 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { buildPaySummary } from "@/lib/export/summary";
+import { generatePayCsv } from "@/lib/export/csv";
+import { generatePayTxt } from "@/lib/export/txt";
+import { generatePayPdf, isPdfLayout, PdfLayout } from "@/lib/export/pdf";
 
-export const runtime = "nodejs"; // ExcelJS needs Node runtime (not Edge)
+export const runtime = "nodejs"; // ExcelJS / pdf-lib need Node runtime (not Edge)
+
+type ExportFormat = "xlsx" | "csv" | "txt" | "pdf";
 
 type ExportPayload = {
   year: number;
@@ -13,6 +19,10 @@ type ExportPayload = {
   withDependents: boolean;
   receivesBah?: boolean;
   stateOfLegalResidence?: string;
+
+  // Output selection. Defaults to "xlsx" for backward compatibility.
+  format?: ExportFormat;
+  pdfLayout?: string; // "classic" | "modern" | "compact"
 
   basePayMonthly: number;
   bahMonthly: number;
@@ -37,6 +47,31 @@ function clamp(n: number, min: number, max: number) {
 function num(x: unknown, fallback = 0) {
   const n = typeof x === "number" ? x : Number(x);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function fileResponse(
+  body: string | Uint8Array,
+  contentType: string,
+  filename: string
+) {
+  let payload: BodyInit;
+  if (typeof body === "string") {
+    payload = body;
+  } else {
+    // Copy into a fresh ArrayBuffer-backed array so the type is an
+    // unambiguous BodyInit (sidesteps the Uint8Array<ArrayBufferLike> friction).
+    const bytes = new Uint8Array(body.length);
+    bytes.set(body);
+    payload = new Blob([bytes], { type: contentType });
+  }
+  return new NextResponse(payload, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -66,6 +101,44 @@ export async function POST(req: NextRequest) {
   const tspPct = clamp(num(body.tspPct ?? 0.10), 0, 0.92);
   const stateTaxPct = clamp(num(body.stateTaxPct ?? 0), 0, 0.2);
   const stateOfLegalResidence = String(body.stateOfLegalResidence ?? "").trim();
+
+  // ---------------------------------------------------------------------
+  // Minimalist exports (CSV / TXT / PDF): just the pay numbers. These skip
+  // the Excel template entirely and are generated directly from the inputs.
+  // ---------------------------------------------------------------------
+  const format: ExportFormat = body.format ?? "xlsx";
+
+  if (format !== "xlsx") {
+    const generatedOn = new Date().toISOString().slice(0, 10);
+    const summary = buildPaySummary({
+      year: body.year ?? 2026,
+      grade: body.grade ?? "",
+      yosLabel: body.yosLabel ?? "",
+      zip5,
+      receivesBah,
+      dependents: !!body.withDependents,
+      stateOfLegalResidence,
+      baseMonthly: base,
+      bahMonthly: bah,
+      basMonthly: bas,
+      otherMonthly: other,
+      generatedOn,
+    });
+
+    const loc = receivesBah ? zip5 : "NoBAH";
+    const nameBase = `activepayos_Pay_${loc}_${body.grade ?? "Pay"}_${body.year ?? 2026}`;
+
+    if (format === "csv") {
+      return fileResponse(generatePayCsv(summary), "text/csv; charset=utf-8", `${nameBase}.csv`);
+    }
+    if (format === "txt") {
+      return fileResponse(generatePayTxt(summary), "text/plain; charset=utf-8", `${nameBase}.txt`);
+    }
+    // format === "pdf"
+    const layout: PdfLayout = isPdfLayout(body.pdfLayout) ? body.pdfLayout : "classic";
+    const pdfBytes = await generatePayPdf(summary, layout);
+    return fileResponse(pdfBytes, "application/pdf", `${nameBase}_${layout}.pdf`);
+  }
 
   // Suggested dollars (Hybrid)
   const suggestedHousing = bah * housingTargetPct;

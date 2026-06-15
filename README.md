@@ -77,8 +77,20 @@ npm run build
 
 ActivePayOS is being built in public as a community-reviewed military pay toolkit. The long-term goal is to become a trusted, transparent reference for service members planning around pay, housing, PCS moves, TSP, taxes, and common military life decisions.
 
-The repository is public so people can inspect the source, verify the data approach, report issues, and propose improvements. Public visibility is not permission to copy, host, rebrand, commercialize, or republish ActivePayOS or substantial portions of it as another product.
+The repository is public and **open source** so anyone can inspect the source, verify the data approach, report issues, and propose improvements. This is a community-owned, non-profit public good: we are actively looking for collaborators and want the community to help drive development alongside the maintainers.
+
+## Contributing & community
+
+ActivePayOS is community-owned and we would love your help — code, data accuracy, ideas, or feedback. See [CONTRIBUTING.md](CONTRIBUTING.md), browse the [open issues](https://github.com/nickparker52/ActivePayOS/issues), or [file a ticket](https://github.com/nickparker52/ActivePayOS/issues/new).
 
 ## License
 
-Source available for review and transparency only. All rights reserved. See [LICENSE](LICENSE).
+ActivePayOS is **open source**.
+
+- **Code** (everything we wrote — app, components, data-processing scripts, schemas, validation, and copy) is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**. You are free to use, study, modify, and redistribute it; if you run a modified version as a network service, AGPL requires you to make your source available to its users. See [LICENSE](LICENSE).
+- **Reference data** under `data/` originates from U.S. Government sources (DFAS, DTMO/MHA) and is in the **public domain** (17 U.S.C. § 105). See [NOTICE](NOTICE).
+- **Brand:** the name "ActivePayOS," the logo, and activepayos.com are not covered by the code license — a fork or derivative must use its own name and branding.
+
+Copyright (C) 2026 Simon Gott, Nick Parker, and ActivePayOS contributors.
+
+ActivePayOS is not an official Department of Defense, DFAS, or U.S. military website and is not affiliated with any branch of the U.S. military. It does not provide legal, tax, or financial advice. Always verify with your LES, myPay, and DFAS.

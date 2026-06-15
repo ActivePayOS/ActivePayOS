@@ -10,7 +10,7 @@ welcome here.
 
 ## Ways to help
 
-- **Report a bug or a wrong number.** Open an issue: <https://github.com/nickparker52/ActivePayOS/issues/new>
+- **Report a bug or a wrong number.** Open an issue: <https://github.com/ActivePayOS/ActivePayOS/issues/new>
 - **Suggest a feature or a new calculator.** Open an issue and describe the use case.
 - **Write code.** Pick up an open issue (look for `good first issue`), or propose a
   change in an issue first, then open a pull request.
@@ -20,7 +20,7 @@ welcome here.
 ## Development
 
 ```bash
-git clone https://github.com/nickparker52/ActivePayOS.git
+git clone https://github.com/ActivePayOS/ActivePayOS.git
 cd ActivePayOS
 npm install
 npm run dev

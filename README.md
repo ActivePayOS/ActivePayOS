@@ -55,7 +55,7 @@ Always verify major decisions with your Leave and Earnings Statement (LES), myPa
 ## Local Development
 
 ```bash
-git clone https://github.com/nickparker52/ActivePayOS.git
+git clone https://github.com/ActivePayOS/ActivePayOS.git
 cd ActivePayOS
 npm install
 npm run dev
@@ -81,7 +81,7 @@ The repository is public and **open source** so anyone can inspect the source, v
 
 ## Contributing & community
 
-ActivePayOS is community-owned and we would love your help — code, data accuracy, ideas, or feedback. See [CONTRIBUTING.md](CONTRIBUTING.md), browse the [open issues](https://github.com/nickparker52/ActivePayOS/issues), or [file a ticket](https://github.com/nickparker52/ActivePayOS/issues/new).
+ActivePayOS is community-owned and we would love your help — code, data accuracy, ideas, or feedback. See [CONTRIBUTING.md](CONTRIBUTING.md), browse the [open issues](https://github.com/ActivePayOS/ActivePayOS/issues), or [file a ticket](https://github.com/ActivePayOS/ActivePayOS/issues/new).
 
 ## License
 

@@ -2,7 +2,7 @@
 // site. ActivePayOS is open source and community-owned, so contributions and
 // feedback both flow through the public repo.
 
-export const GITHUB_REPO = "https://github.com/nickparker52/ActivePayOS";
+export const GITHUB_REPO = "https://github.com/ActivePayOS/ActivePayOS";
 export const GITHUB_ISSUES = `${GITHUB_REPO}/issues`;
 export const GITHUB_NEW_ISSUE = `${GITHUB_REPO}/issues/new`;
 

@@ -416,8 +416,9 @@ export default function PayClient({
 
           <div className="mt-6 grid gap-4">
             <div>
-              <label className="block text-sm font-medium">Year</label>
+              <label htmlFor="pay-year" className="block text-sm font-medium">Year</label>
               <select
+                id="pay-year"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value) as (typeof YEARS)[number])}
@@ -431,8 +432,9 @@ export default function PayClient({
             </div>
 
             <div>
-              <label className="block text-sm font-medium">Pay Grade</label>
+              <label htmlFor="pay-grade" className="block text-sm font-medium">Pay Grade</label>
               <select
+                id="pay-grade"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={grade}
                 onChange={(e) => setGrade(e.target.value as PayGrade)}
@@ -451,10 +453,11 @@ export default function PayClient({
             </div>
 
             <div>
-              <label className="block text-sm font-medium">
+              <label htmlFor="years-of-service" className="block text-sm font-medium">
                 Years of Service (YOS)
               </label>
               <select
+                id="years-of-service"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={yos}
                 onChange={(e) => setYos(Number(e.target.value))}
@@ -492,10 +495,11 @@ export default function PayClient({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className={!receivesBah ? "opacity-60" : ""}>
-                <label className="block text-sm font-medium">
+                <label htmlFor="duty-zip" className="block text-sm font-medium">
                   Duty ZIP (for BAH)
                 </label>
                 <input
+                  id="duty-zip"
                   className="field mt-1 w-full rounded-xl px-3 py-2"
                   placeholder="02139"
                   value={zip}

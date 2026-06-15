@@ -2,9 +2,11 @@
 
 /* ----------------------------------------------------------------------------
    Theming
-   The app's utility classes (bg-white, bg-gray-50, text-gray-900, border, ...)
-   are remapped onto CSS variables below, so switching a theme is just swapping
-   the variable values. Default = light. [data-theme="neon"] = Neon Noir.
+   Utility classes (bg-white, bg-gray-50, text-gray-900, border, ...) are
+   remapped onto CSS variables, so switching a theme is just swapping values.
+   Three themes select via [data-theme] on <html>: "light", "dark" (classic),
+   and "neon" (Neon Noir). Default = dark (set on <html> by the server and the
+   no-flash inline script in layout.tsx).
 ---------------------------------------------------------------------------- */
 
 :root {
@@ -82,7 +84,7 @@ body {
     color: color-mix(in srgb, var(--field-text) 55%, transparent);
   }
 
-  /* Keep the native option list legible (esp. in Neon Noir). */
+  /* Keep the native option list legible on the dark themes. */
   .field option {
     background-color: var(--card);
     color: var(--foreground);
@@ -125,6 +127,34 @@ body {
 }
 
 /* ----------------------------------------------------------------------------
+   Classic Dark (default) — the original blue-tinted dark theme.
+---------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #050914;
+  --foreground: #f7fbff;
+  --brand-blue: #3b82ff;
+  --brand-blue-dark: #1d6cff;
+  --brand-ink: #f7fbff;
+  --brand-surface: #050914;
+  --card: #0c1424;
+  --card-muted: #111d31;
+  --line: #263852;
+  --muted: #b7c4d6;
+
+  --field-bg: #142036;
+  --field-bg-hover: #1a2942;
+  --field-text: #d8e6ff;
+  --field-border: #34507c;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 255, 0.16), transparent 28rem),
+    var(--background);
+}
+
+/* ----------------------------------------------------------------------------
    Neon Noir — a blade-runner-inspired dark theme (neon cyan + magenta on near
    black). Renamed from the trademarked film; rename freely.
 ---------------------------------------------------------------------------- */
@@ -158,42 +188,64 @@ body {
   background: color-mix(in srgb, var(--brand-ink) 38%, transparent);
 }
 
+/* ----------------------------------------------------------------------------
+   Shared dark-mode structural overrides (Dark + Neon).
+---------------------------------------------------------------------------- */
+[data-theme="dark"] .shadow-sm,
+[data-theme="dark"] .shadow-md {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 [data-theme="neon"] .shadow-sm,
 [data-theme="neon"] .shadow-md {
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.07), 0 10px 34px rgba(2, 8, 23, 0.6);
 }
 
+[data-theme="dark"] .text-gray-400,
 [data-theme="neon"] .text-gray-400 {
   color: #7e90ad;
 }
 
-/* Primary (black) buttons become a glowing neon control with dark text. */
+[data-theme="dark"] .bg-black,
 [data-theme="neon"] .bg-black {
   background-color: var(--brand-blue);
+}
+
+/* Neon's cyan is bright — use dark text on primary buttons there. */
+[data-theme="neon"] .bg-black {
   color: #04121a;
 }
 
+[data-theme="dark"] .border-black,
 [data-theme="neon"] .border-black {
   border-color: var(--brand-blue);
 }
 
 /* Progress/bar fills that use translucent black would vanish on dark. */
+[data-theme="dark"] .bg-black\/70,
 [data-theme="neon"] .bg-black\/70 {
   background-color: color-mix(in srgb, var(--brand-blue) 80%, transparent);
 }
 
+[data-theme="dark"] .hover\:bg-gray-50:hover,
+[data-theme="dark"] .hover\:bg-gray-100:hover,
+[data-theme="dark"] .hover\:bg-gray-800:hover,
 [data-theme="neon"] .hover\:bg-gray-50:hover,
 [data-theme="neon"] .hover\:bg-gray-100:hover,
 [data-theme="neon"] .hover\:bg-gray-800:hover {
   background-color: color-mix(in srgb, var(--brand-blue) 18%, var(--card));
 }
 
+[data-theme="dark"] .hover\:text-gray-700:hover,
+[data-theme="dark"] .hover\:text-gray-900:hover,
+[data-theme="dark"] .hover\:text-black:hover,
 [data-theme="neon"] .hover\:text-gray-700:hover,
 [data-theme="neon"] .hover\:text-gray-900:hover,
 [data-theme="neon"] .hover\:text-black:hover {
   color: var(--brand-blue);
 }
 
+[data-theme="dark"] .focus\:ring-black\/20:focus,
 [data-theme="neon"] .focus\:ring-black\/20:focus {
   --tw-ring-color: color-mix(in srgb, var(--brand-blue) 45%, transparent);
 }

@@ -11,9 +11,11 @@ export default function ContributeCTA() {
     <section className="rounded-3xl border bg-gray-50 p-6 shadow-sm md:p-8">
       <h2 className="text-xl font-semibold tracking-tight">Help build ActivePayOS</h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-        ActivePayOS is open source and community-owned. If you write code — or you just have ideas —
-        we would love the help. Jump into the repo, pick up an open issue, or tell us what to fix or
-        add. It is built in the open, by and for the military community.
+        ActivePayOS is open source and <strong>community-owned</strong> — and we want the community
+        to help drive where it goes. We are actively looking for collaborators. If you write code,
+        check numbers, or just have ideas, we would love the help: jump into the repo, pick up an
+        open issue, or tell us what to fix or add. Built in the open, by and for the military
+        community.
       </p>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">

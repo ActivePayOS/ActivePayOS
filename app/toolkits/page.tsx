@@ -98,6 +98,11 @@ export default function ToolkitsPage() {
       desc: "See what rank/YOS changes do to pay and how to allocate the raise.",
     },
     {
+      href: "/toolkits/promotion-timeline",
+      title: "Promotion & Milestone Timeline",
+      desc: "Project promotions, GI Bill, ETS, and retirement over time — exportable.",
+    },
+    {
       href: "/toolkits/student-loans",
       title: "Student Loans",
       desc: "PSLF, repayment options, and payoff vs invest decision support.",

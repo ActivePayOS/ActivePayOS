@@ -55,40 +55,25 @@ export default function RootLayout({
             <BrandLogo />
 
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium">
-              <Link href="/" className="hover:underline">
-                Home
-              </Link>
-              <Link href="/pay" className="hover:underline">
+              <Link href="/" className="hover:text-[var(--brand-blue)]">
                 Pay
               </Link>
-              <Link href="/housing" className="hover:underline">
+              <Link href="/housing" className="hover:text-[var(--brand-blue)]">
                 Housing
               </Link>
-              <Link href="/pcs" className="hover:underline">
+              <Link href="/pcs" className="hover:text-[var(--brand-blue)]">
                 PCS
               </Link>
-              <Link href="/toolkits" className="hover:underline">
+              <Link href="/toolkits/promotion-timeline" className="hover:text-[var(--brand-blue)]">
+                Timeline
+              </Link>
+              <Link href="/toolkits" className="hover:text-[var(--brand-blue)]">
                 Toolkits
-              </Link>
-              <Link href="/terms" className="hover:underline">
-                Terms Explained
-              </Link>
-              <Link href="/accuracy" className="hover:underline">
-                Accuracy
-              </Link>
-              <Link href="/about" className="hover:underline">
-                About
-              </Link>
-              <Link href="/contact" className="hover:underline">
-                Contact
-              </Link>
-              <Link href="/privacy" className="hover:text-[var(--brand-blue)]">
-                Privacy
               </Link>
             </nav>
           </header>
 
-          <main className="pb-16">{children}</main>
+          <div className="pb-16">{children}</div>
 
           <footer className="border-t py-8 text-xs text-gray-500">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -98,14 +83,25 @@ export default function RootLayout({
                 For educational purposes only - verify financial decisions with DFAS and official sources.
               </div>
 
-              <div className="flex items-center gap-4">
-                <Link href="/contact" className="hover:underline">
-                  Contact
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <Link href="/terms" className="hover:underline">
+                  Terms Explained
                 </Link>
                 <Link href="/accuracy" className="hover:underline">
                   Accuracy
                 </Link>
-               
+                <Link href="/resources" className="hover:underline">
+                  Resources
+                </Link>
+                <Link href="/about" className="hover:underline">
+                  About
+                </Link>
+                <Link href="/contact" className="hover:underline">
+                  Contact
+                </Link>
+                <Link href="/privacy" className="hover:underline">
+                  Privacy
+                </Link>
               </div>
             </div>
           </footer>

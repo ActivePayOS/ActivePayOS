@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   BRANCH_OPTIONS,
   BranchId,
@@ -13,6 +14,7 @@ import {
   TimelineInputs,
   EventKind,
 } from "@/lib/promotion/timeline";
+import { buildCompensationProjection } from "@/lib/promotion/compensation";
 
 type ExportFormat = "pdf" | "csv" | "txt";
 
@@ -44,6 +46,15 @@ function usd(n: number | null | undefined): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
+function yearsLabel(months: number): string {
+  const yr = Math.floor(months / 12);
+  const mo = months % 12;
+  const parts: string[] = [];
+  if (yr) parts.push(`${yr} yr`);
+  if (mo) parts.push(`${mo} mo`);
+  return parts.join(" ") || "0 mo";
+}
+
 const LEGEND: { kind: EventKind; label: string }[] = [
   { kind: "promotion", label: "Promotion" },
   { kind: "early-promotion", label: "Early promotion" },
@@ -61,6 +72,8 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
   const [startGrade, setStartGrade] = useState<string>("E-1");
   const [accessionDate, setAccessionDate] = useState<string>(todayISO);
   const [contractYears, setContractYears] = useState<number>(4);
+  const [zip, setZip] = useState<string>("");
+  const [dependents, setDependents] = useState<boolean>(false);
 
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [exporting, setExporting] = useState(false);
@@ -77,6 +90,16 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
   );
 
   const result = useMemo(() => buildPromotionTimeline(inputs, basepay), [inputs, basepay]);
+
+  const comp = useMemo(
+    () =>
+      buildCompensationProjection(
+        { branch, track, startGrade, contractYears },
+        basepay,
+        { zip, withDependents: dependents }
+      ),
+    [branch, track, startGrade, contractYears, basepay, zip, dependents]
+  );
 
   async function downloadTimeline() {
     setExporting(true);
@@ -177,6 +200,28 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
               }}
             />
           </label>
+
+          <label className="block text-sm font-medium text-gray-700">
+            Duty ZIP <span className="font-normal text-gray-400">(optional, for BAH)</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="e.g. 92134"
+              className={selectCls}
+              value={zip}
+              onChange={(e) => setZip(e.target.value)}
+            />
+          </label>
+
+          <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={dependents}
+              onChange={(e) => setDependents(e.target.checked)}
+            />
+            With dependents
+          </label>
         </div>
 
         <p className="mt-4 text-sm text-gray-700">
@@ -207,6 +252,157 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           >
             {exporting ? "Preparing..." : "Download"}
           </button>
+        </div>
+      </section>
+
+      {/* Compensation projection: taxable vs non-taxable */}
+      <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">Projected compensation</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Total pay over your projected career, split into{" "}
+              <span className="font-medium text-gray-900">taxable</span> (base pay) and{" "}
+              <span className="font-medium text-gray-900">non-taxable</span> (BAH + BAS).
+            </p>
+          </div>
+          <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-600">
+            {comp.year} rates
+          </span>
+        </div>
+
+        {comp.hasBah ? (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+            Including BAH for the entered ZIP {dependents ? "(with dependents)" : "(without dependents)"}.
+            BAH is held at the current rate for each grade.
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+            {comp.bahStatus
+              ? "That ZIP is not in the 2026 local BAH rate data, so the non-taxable totals include BAS only. Check the ZIP or verify with the official BAH calculator."
+              : "Add a duty ZIP (and dependent status) above to fold BAH into the non-taxable totals. Showing base pay + BAS only for now."}
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {[
+            { label: `Through your contract (${contractYears} yr)`, t: comp.toETS },
+            { label: "If you serve to 20-yr retirement", t: comp.toRetire },
+          ].map((card) => (
+            <div key={card.label} className="rounded-2xl border p-5">
+              <div className="text-sm font-medium text-gray-700">{card.label}</div>
+              <div className="mt-2 text-3xl font-bold tracking-tight">{usd(card.t.total)}</div>
+              <div className="mt-1 text-xs text-gray-500">
+                Total projected compensation ({Math.round(card.t.months / 12)} yr)
+              </div>
+
+              <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full bg-gray-800"
+                  style={{ width: `${100 - card.t.untaxablePct}%` }}
+                  title="Taxable (base pay)"
+                />
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{ width: `${card.t.untaxablePct}%` }}
+                  title="Non-taxable (BAH + BAS)"
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-800" />
+                    Taxable (base)
+                  </div>
+                  <div className="mt-0.5 font-semibold text-gray-900">{usd(card.t.taxable)}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    Non-taxable
+                  </div>
+                  <div className="mt-0.5 font-semibold text-gray-900">{usd(card.t.untaxable)}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                {card.t.untaxablePct.toFixed(0)}% of this total is generally non-taxable.
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                <th className="py-2 pr-3 font-medium">Grade</th>
+                <th className="py-2 px-3 font-medium">Time held</th>
+                <th className="py-2 px-3 text-right font-medium">Monthly base</th>
+                <th className="py-2 px-3 text-right font-medium">Monthly BAS</th>
+                <th className="py-2 px-3 text-right font-medium">Monthly BAH</th>
+                <th className="py-2 pl-3 text-right font-medium">Phase total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comp.phases.map((p) => (
+                <tr key={p.grade} className="border-b last:border-0">
+                  <td className="py-2 pr-3 font-medium text-gray-900">{p.grade}</td>
+                  <td className="py-2 px-3 text-gray-600">{yearsLabel(p.months)}</td>
+                  <td className="py-2 px-3 text-right">{usd(p.monthlyBase)}</td>
+                  <td className="py-2 px-3 text-right">{usd(p.monthlyBas)}</td>
+                  <td className="py-2 px-3 text-right">{comp.hasBah ? usd(p.monthlyBah) : "—"}</td>
+                  <td className="py-2 pl-3 text-right font-semibold text-gray-900">
+                    {usd(p.taxable + p.untaxable)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-gray-500">
+          Phase totals span the projected time at each grade out to the 20-yr mark and include DFAS
+          longevity (over-N-years) base-pay raises. Monthly figures are shown at entry to each grade.
+          BAS uses the {comp.year} {track === "officer" ? "officer" : "enlisted"} rate. Planning
+          estimates only.
+        </p>
+      </section>
+
+      {/* Plan the raise (merged from the Promotion Pay Planner) */}
+      <section className="rounded-3xl border bg-gray-50 p-6 md:p-8">
+        <h2 className="text-lg font-semibold">Plan the raise before it hits</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Each promotion above is a pay bump. Decide where it goes before lifestyle creep does.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            { pct: "50%", label: "Save & invest", note: "TSP, Roth IRA, or emergency fund first." },
+            { pct: "30%", label: "Pay down debt", note: "High-interest balances, if any." },
+            { pct: "20%", label: "Guilt-free", note: "Lifestyle upgrades you actually want." },
+          ].map((x) => (
+            <div key={x.label} className="rounded-2xl border bg-white p-4">
+              <div className="text-2xl font-bold tracking-tight">{x.pct}</div>
+              <div className="mt-1 text-sm font-medium text-gray-900">{x.label}</div>
+              <div className="mt-1 text-xs text-gray-500">{x.note}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          <Link href="/" className="rounded-full border bg-white px-4 py-2 font-medium hover:bg-gray-100">
+            Pay Calculator →
+          </Link>
+          <Link
+            href="/toolkits/budget-planner"
+            className="rounded-full border bg-white px-4 py-2 font-medium hover:bg-gray-100"
+          >
+            Budget Planner →
+          </Link>
+          <Link
+            href="/toolkits/retirement-tsp"
+            className="rounded-full border bg-white px-4 py-2 font-medium hover:bg-gray-100"
+          >
+            TSP & Retirement →
+          </Link>
         </div>
       </section>
 

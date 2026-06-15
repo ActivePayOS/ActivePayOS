@@ -1,6 +1,7 @@
-import ToolkitPage from "@/components/ToolkitPage";
-import { promotionPlanner } from "@/data/toolkits/promotion-planner";
+import { redirect } from "next/navigation";
 
+// The Promotion Pay Planner has been merged into the Promotion & Milestone
+// Timeline, which now shows the raise at each step plus an allocation guide.
 export default function Page() {
-  return <ToolkitPage toolkit={promotionPlanner} />;
+  redirect("/toolkits/promotion-timeline");
 }

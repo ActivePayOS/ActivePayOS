@@ -33,10 +33,11 @@ export function generateTimelineCsv(
   lines.push(row(["Branch", result.branchLabel]));
   lines.push(row(["Track", inputs.track === "officer" ? "Officer" : "Enlisted"]));
   lines.push(row(["Start grade", result.startGrade]));
-  lines.push(row(["Accession date", inputs.accessionDate]));
-  lines.push(row(["Contract length (years)", inputs.contractYears]));
-  lines.push(row(["Projected final grade", result.finalGrade]));
+  lines.push(row([inputs.track === "officer" ? "Date commissioned" : "Date entered service", inputs.accessionDate]));
+  lines.push(row(["Current obligation (years)", inputs.contractYears]));
+  lines.push(row(["20-year scenario final grade", result.finalGrade]));
   lines.push(row(["Generated", generatedOn]));
+  lines.push(row(["Assumptions", "Planning estimate; strongest for enlisted planning. Officer mode is a broad commissioned-service sketch."]));
 
   lines.push("");
   lines.push(

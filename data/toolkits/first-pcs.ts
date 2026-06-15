@@ -32,7 +32,7 @@ export const firstPcs: Toolkit = {
       actions: [
         { label: "Pay Calculator", href: "/pay", note: "Preview BAH at the new ZIP" },
         { label: "Budget Planner", href: "/toolkits/budget-planner", note: "Build the new baseline budget" },
-        { label: "Promotion & Milestone Timeline", href: "/toolkits/promotion-timeline", note: "If you're promoting during the move" },
+        { label: "Career Milestone Planner", href: "/toolkits/promotion-timeline", note: "If you're promoting during the move" },
       ],
     },
     {

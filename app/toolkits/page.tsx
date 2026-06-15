@@ -41,8 +41,8 @@ const tools = [
   },
   {
     href: "/toolkits/promotion-timeline",
-    title: "Promotion & Milestone Timeline",
-    desc: "Project promotions, GI Bill, ETS, and retirement — plus taxable vs non-taxable pay over time. Exportable.",
+    title: "Career Milestone Planner",
+    desc: "Build an enlisted-first planning scenario for promotions, GI Bill, ETS, retirement, and pay over time.",
   },
   {
     href: "/toolkits/student-loans",
@@ -71,7 +71,7 @@ export default function ToolkitsPage() {
             href="/toolkits/promotion-timeline"
             className="rounded-2xl border bg-gray-50 px-4 py-2 text-sm font-medium hover:bg-gray-100 transition"
           >
-            Promotion Timeline
+            Career Milestones
           </Link>
           <Link
             href="/resources"

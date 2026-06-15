@@ -69,11 +69,11 @@ function drawHeader(
   page.drawRectangle({ x: 0, y: PAGE_H - bandH, width: PAGE_W, height: bandH, color: NAVY });
   page.drawRectangle({ x: 0, y: PAGE_H - bandH, width: PAGE_W, height: 4, color: KIND_COLOR.promotion });
 
-  page.drawText("Promotion & Milestone Timeline", { x: M, y: PAGE_H - 34, size: first ? 19 : 14, font: f.bold, color: WHITE });
+  page.drawText("Career Milestone Planner", { x: M, y: PAGE_H - 34, size: first ? 19 : 14, font: f.bold, color: WHITE });
   if (first) {
-    const sub = `${result.branchLabel}  -  ${inputs.track === "officer" ? "Officer" : "Enlisted"}  -  start ${result.startGrade}  ->  projected ${result.finalGrade}`;
+    const sub = `${result.branchLabel}  -  ${inputs.track === "officer" ? "Officer sketch" : "Enlisted planning"}  -  start ${result.startGrade}  ->  20-yr scenario ${result.finalGrade}`;
     page.drawText(sub, { x: M, y: PAGE_H - 54, size: 10, font: f.reg, color: SUBTLE_WHITE });
-    page.drawText(`Accession ${inputs.accessionDate}   Contract ${inputs.contractYears} yr`, { x: M, y: PAGE_H - 72, size: 9, font: f.reg, color: SUBTLE_WHITE });
+    page.drawText(`Start ${inputs.accessionDate}   Current obligation ${inputs.contractYears} yr`, { x: M, y: PAGE_H - 72, size: 9, font: f.reg, color: SUBTLE_WHITE });
     rightText(page, `Generated ${generatedOn}`, RIGHT, PAGE_H - 34, 9, f.reg, SUBTLE_WHITE);
   }
   return PAGE_H - bandH - 28;
@@ -81,7 +81,7 @@ function drawHeader(
 
 function drawFooter(page: PDFPage, f: Fonts, pageNum: number) {
   page.drawLine({ start: { x: M, y: 50 }, end: { x: RIGHT, y: 50 }, thickness: 0.5, color: LINE });
-  page.drawText("Planning estimates - not official. Verify with your chain of command and the VA.", { x: M, y: 38, size: 7.5, font: f.reg, color: MUTED });
+  page.drawText("Planning estimates - not official. Verify branch policy, DFAS, VA, and your chain of command.", { x: M, y: 38, size: 7.5, font: f.reg, color: MUTED });
   rightText(page, `Page ${pageNum}`, RIGHT, 38, 7.5, f.reg, MUTED);
 }
 
@@ -95,7 +95,7 @@ export async function generateTimelinePdf(
   generatedOn: string
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(`ActivePayOS Promotion Timeline - ${result.branchLabel} ${result.startGrade}`);
+  doc.setTitle(`ActivePayOS Career Milestone Planner - ${result.branchLabel} ${result.startGrade}`);
   doc.setCreator("ActivePayOS");
 
   const f: Fonts = {
@@ -174,7 +174,7 @@ export async function generateTimelinePdf(
   y -= 6;
   page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.5, color: LINE });
   y -= 16;
-  page.drawText("*  Planning estimate (board/exam-driven or rule-of-thumb timing).", { x: M, y, size: 8, font: f.reg, color: MUTED });
+  page.drawText("*  Planning estimate; strongest for enlisted planning. Officer mode is a broad sketch.", { x: M, y, size: 8, font: f.reg, color: MUTED });
   y -= 13;
   page.drawText(`Promotion timing source: ${result.source.label}`, { x: M, y, size: 8, font: f.reg, color: MUTED });
   y -= 11;

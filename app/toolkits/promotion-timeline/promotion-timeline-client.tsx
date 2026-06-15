@@ -19,7 +19,7 @@ import { buildCompensationProjection } from "@/lib/promotion/compensation";
 type ExportFormat = "pdf" | "csv" | "txt";
 
 const EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
-  { value: "pdf", label: "PDF — visual timeline" },
+  { value: "pdf", label: "PDF — planning timeline" },
   { value: "csv", label: "CSV — event table" },
   { value: "txt", label: "Text — plain list" },
 ];
@@ -101,6 +101,11 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
     [branch, track, startGrade, contractYears, accessionDate, basepay, zip, dependents]
   );
 
+  const trackNote =
+    track === "enlisted"
+      ? "Best fit: enlisted active-duty planning. Junior grade dates are usually the most predictable; NCO/SNCO dates are competitive estimates."
+      : "Officer mode is a broad commissioned-service scenario. It does not account for designator, specialty, promotion zones, constructive credit, or professional corps rules.";
+
   async function downloadTimeline() {
     setExporting(true);
     try {
@@ -133,22 +138,28 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
   return (
     <main className="mx-auto max-w-5xl p-6 md:p-10 space-y-8">
       <header className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold tracking-tight">Promotion & Milestone Timeline</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-3xl font-semibold tracking-tight">Career Milestone Planner</h1>
+          <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-600">
+            Enlisted-first
+          </span>
+        </div>
         <p className="mt-2 text-sm text-gray-600">
-          Plot your projected promotions and key milestones over time from your contract details —
-          with the base-pay raise at each step. Junior promotions are largely time-based; senior
-          ones are board/exam-driven and shown as <em>earliest typical</em> eligibility.
+          Build a planning scenario for active-duty promotions, GI Bill, ETS, retirement, and pay
+          milestones. This is strongest for enlisted career planning; officer mode uses broad
+          commissioned-service timing and should be treated as a rough sketch.
         </p>
         <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Planning estimates only — not an official DoD, DFAS, or VA tool. Promotions above the
-          junior grades are competitive and not guaranteed. Verify with your chain of command,
-          branch policy, and the VA.
+          Planning estimates only — not an official DoD, DFAS, VA, or branch promotion tool. Actual
+          dates depend on branch policy, career field, eligibility, PME, TIG/TIS, waivers, manning,
+          boards, performance, and policy changes.
         </div>
       </header>
 
       {/* Inputs */}
       <section className="rounded-3xl border bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Contract details</h2>
+        <h2 className="text-lg font-semibold">Scenario details</h2>
+        <p className="mt-1 text-sm text-gray-600">{trackNote}</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block text-sm font-medium text-gray-700">
             Branch
@@ -177,7 +188,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           </label>
 
           <label className="block text-sm font-medium text-gray-700">
-            Date entered service
+            {track === "officer" ? "Date commissioned" : "Date entered service"}
             <input
               type="date"
               className={selectCls}
@@ -187,7 +198,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           </label>
 
           <label className="block text-sm font-medium text-gray-700">
-            Contract length (years)
+            Current obligation / contract length (years)
             <input
               type="number"
               min={1}
@@ -225,10 +236,13 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
         </div>
 
         <p className="mt-4 text-sm text-gray-700">
-          Projected path: <strong>{result.startGrade} → {result.finalGrade}</strong>{" "}
+          Scenario path: <strong>{result.startGrade} → {result.finalGrade}</strong>{" "}
           <span className="text-gray-500">
-            ({result.branchLabel}, {track === "officer" ? "Officer" : "Enlisted"}, {contractYears}-yr contract)
+            ({result.branchLabel}, {track === "officer" ? "Officer sketch" : "Enlisted planning"}, {contractYears}-yr obligation)
           </span>
+        </p>
+        <p className="mt-1 text-xs text-gray-500">
+          The final grade shown is the long-range 20-year scenario path, not a promise for the current obligation.
         </p>
 
         {/* Export controls */}
@@ -261,7 +275,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           <div>
             <h2 className="text-lg font-semibold">Projected compensation</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Total pay over your projected career, split into{" "}
+              Planning estimate for current-obligation and 20-year scenarios, split into{" "}
               <span className="font-medium text-gray-900">taxable</span> (base pay) and{" "}
               <span className="font-medium text-gray-900">non-taxable</span> (BAH + BAS).
             </p>
@@ -286,7 +300,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {[
-            { label: `Through your contract (${contractYears} yr)`, t: comp.toETS },
+            { label: `Through current obligation (${contractYears} yr)`, t: comp.toETS },
             { label: "If you serve to 20-yr retirement", t: comp.toRetire },
           ].map((card) => (
             <div key={card.label} className="rounded-2xl border p-5">
@@ -361,10 +375,10 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           </table>
         </div>
         <p className="mt-3 text-xs text-gray-500">
-          Phase totals span the projected time at each grade out to the 20-yr mark and include DFAS
-          longevity (over-N-years) base-pay raises. Monthly figures are shown at entry to each grade.
-          BAS uses the {comp.year} {track === "officer" ? "officer" : "enlisted"} rate. Planning
-          estimates only.
+          Phase totals span the 20-year scenario and include DFAS longevity (over-N-years) base-pay
+          raises. Monthly figures are shown at entry to each grade. BAS uses the {comp.year}{" "}
+          {track === "officer" ? "officer" : "enlisted"} rate. BAH, if entered, is held at current
+          rates by grade and does not model future PCS moves.
         </p>
       </section>
 
@@ -374,8 +388,8 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           <div>
             <h2 className="text-lg font-semibold">Retirement value at 20 years</h2>
             <p className="mt-1 text-sm text-gray-600">
-              A 20-year career also earns a lifetime pension — the biggest number most plans leave
-              out. Here is the trade-off between the two military retirement systems.
+              A 20-year career may earn a lifetime pension. This section shows a simplified,
+              today-dollar comparison of the two retirement systems.
             </p>
           </div>
           <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-600">
@@ -385,7 +399,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
 
         <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
           <div className="text-sm font-medium text-gray-700">
-            Estimated 20-year value (service pay + {comp.retirement.payoutYears}-yr pension)
+            Illustrative 20-year value (service pay + {comp.retirement.payoutYears}-yr pension)
           </div>
           <div className="mt-1 text-3xl font-bold tracking-tight">
             {usd(comp.toRetire.total + Math.min(comp.retirement.legacy.lifetimeValue, comp.retirement.brs.lifetimeValue))}
@@ -393,8 +407,8 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
             {usd(comp.toRetire.total + Math.max(comp.retirement.legacy.lifetimeValue, comp.retirement.brs.lifetimeValue))}
           </div>
           <div className="mt-1 text-xs text-gray-500">
-            {usd(comp.toRetire.total)} in pay earned over 20 years, plus an illustrative{" "}
-            {comp.retirement.payoutYears}-year pension. The range spans the two retirement systems below.
+            {usd(comp.toRetire.total)} in estimated pay over 20 years, plus an illustrative{" "}
+            {comp.retirement.payoutYears}-year pension. Uses current pay tables and simplified assumptions.
           </div>
         </div>
 
@@ -453,17 +467,17 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
             base at 20 years) but has no government TSP match. <strong>BRS</strong> trades a smaller
             pension for a portable, invested TSP match you keep even if you separate before 20 years,
             plus continuation pay around the 12-year mark. Over a full 20-year career the Legacy
-            pension usually leads on guaranteed income; BRS can catch up or pull ahead when TSP
-            returns are strong and you value portability. Members who entered on or after Jan 1, 2018
-            are under BRS; Legacy generally applies to those who entered before 2018.
+            pension usually leads on guaranteed pension income; BRS can catch up when TSP returns
+            are strong and portability matters. Members who entered on or after Jan 1, 2018 are
+            generally under BRS; Legacy generally applies to those who entered before 2018.
           </p>
           <p className="mt-2">
             Estimates assume reaching 20 years at the projected grade, a {comp.retirement.payoutYears}-year
-            pension with no COLA, and about {comp.retirement.tspGrowthPct.toFixed(0)}% average annual
-            growth on the government TSP match. Pensions use your <em>High-3</em> (average of the
-            highest 36 months of base pay). Continuation pay varies by branch and year
-            ({comp.retirement.continuationMultiple}×–13× monthly base). Planning estimates only —
-            verify with DFAS, the TSP, and your branch.
+            pension with no COLA, current {comp.year} pay rates, no future pay raises, and about{" "}
+            {comp.retirement.tspGrowthPct.toFixed(0)}% average annual growth on the government TSP
+            match. Pensions use <em>High-3</em> base pay. Continuation pay varies by branch and year
+            ({comp.retirement.continuationMultiple}×–13× monthly base). Verify with DFAS, the TSP,
+            and your branch.
           </p>
         </div>
       </section>
@@ -472,7 +486,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
       <section className="rounded-3xl border bg-gray-50 p-6 md:p-8">
         <h2 className="text-lg font-semibold">Plan the raise before it hits</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Each promotion above is a pay bump. Decide where it goes before lifestyle creep does.
+          If a promotion comes, decide where the raise goes before lifestyle creep does.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {[
@@ -571,13 +585,14 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
       <section className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
         <div className="font-medium text-gray-900">Sources & accuracy</div>
         <p className="mt-1">
-          Promotion timing reference:{" "}
+          Promotion timing references are broad planning anchors:{" "}
           <a className="underline" href={result.source.url} target="_blank" rel="noreferrer">
             {result.source.label}
           </a>
-          . GI Bill tiers per the VA Post-9/11 GI Bill. Pay uses the {basepay.year} DFAS base-pay
-          tables (grade × years of service). Figures are estimates; competitive promotions depend on
-          performance, manning, and boards.
+          . GI Bill tiers follow VA Post-9/11 GI Bill eligibility tiers. Pay uses the {basepay.year}{" "}
+          DFAS base-pay tables (grade × years of service). This tool is best for enlisted planning;
+          officer paths, competitive promotions, special career fields, and prior-service cases need
+          branch-specific review.
         </p>
       </section>
     </main>

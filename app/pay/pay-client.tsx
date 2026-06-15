@@ -16,6 +16,30 @@ type PayGrade =
 
 const YEARS = [2026] as const;
 
+type ExportFormat = "xlsx" | "csv" | "pdf" | "txt";
+type PdfLayout = "classic" | "modern" | "compact";
+
+// Minimalist formats first; the full Excel workbook stays available last.
+const EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
+  { value: "csv", label: "CSV — minimal (any spreadsheet)" },
+  { value: "pdf", label: "PDF — printable summary" },
+  { value: "txt", label: "Text — plain summary" },
+  { value: "xlsx", label: "Excel — full budget workbook" },
+];
+
+const PDF_LAYOUTS: { value: PdfLayout; label: string }[] = [
+  { value: "classic", label: "Classic" },
+  { value: "modern", label: "Modern" },
+  { value: "compact", label: "Compact card" },
+];
+
+const EXPORT_EXT: Record<ExportFormat, string> = {
+  xlsx: "xlsx",
+  csv: "csv",
+  txt: "txt",
+  pdf: "pdf",
+};
+
 const YOS_OPTIONS = [
   { label: "< 2", value: 0 },
   { label: "Over 2", value: 2 },
@@ -230,8 +254,10 @@ export default function PayClient({
   }, [yos]);
 
   const [exporting, setExporting] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>("csv");
+  const [pdfLayout, setPdfLayout] = useState<PdfLayout>("classic");
 
-  async function downloadBudgetXlsx() {
+  async function downloadBudget() {
     try {
       if (receivesBah && (!zip || zip.trim().length === 0)) {
         alert("Enter a duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet.");
@@ -264,6 +290,9 @@ export default function PayClient({
         savingsTargetPct,
         tspPct,
         stateTaxPct,
+
+        format,
+        pdfLayout,
       };
 
       const res = await fetch("/api/export-budget", {
@@ -288,9 +317,11 @@ export default function PayClient({
       const safeZip = receivesBah
         ? String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "")
         : "NoBAH";
+      const stem = format === "xlsx" ? "Budget" : "Pay";
+      const layoutSuffix = format === "pdf" ? `_${pdfLayout}` : "";
       const a = document.createElement("a");
       a.href = url;
-      a.download = `activepayos_Budget_${safeZip || "ZIP"}_${grade}_${year}.xlsx`;
+      a.download = `activepayos_${stem}_${safeZip || "ZIP"}_${grade}_${year}${layoutSuffix}.${EXPORT_EXT[format]}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -322,15 +353,48 @@ export default function PayClient({
               Data: Base Pay + BAS + BAH (Live)
             </span>
 
+            <label className="sr-only" htmlFor="export-format">
+              Export format
+            </label>
+            <select
+              id="export-format"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as ExportFormat)}
+              className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+              title="Choose the file type to download"
+            >
+              {EXPORT_FORMATS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+
+            {format === "pdf" && (
+              <select
+                aria-label="PDF layout"
+                value={pdfLayout}
+                onChange={(e) => setPdfLayout(e.target.value as PdfLayout)}
+                className="rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
+                title="Choose a PDF layout"
+              >
+                {PDF_LAYOUTS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label} layout
+                  </option>
+                ))}
+              </select>
+            )}
+
             <button
-            type="button"
-            onClick={downloadBudgetXlsx}
-            disabled={exporting}
-            className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-            title="Downloads an Excel budget workbook pre-filled with your pay + hybrid suggested plan."
-          >
-            {exporting ? "Preparing export..." : "Download Budget Sheet"}
-          </button>
+              type="button"
+              onClick={downloadBudget}
+              disabled={exporting}
+              className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Download your pay summary in the selected format."
+            >
+              {exporting ? "Preparing..." : "Download"}
+            </button>
           </div>
         </div>
       </header>
@@ -472,10 +536,17 @@ export default function PayClient({
             </div>
 
             <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
-              <div className="font-medium text-gray-900">Budget export</div>
+              <div className="font-medium text-gray-900">Export options</div>
               <p className="mt-1">
-                The download includes a &quot;Start Here&quot; tab that pre-fills your pay and suggests
-                a hybrid plan (Housing about BAH, Food about BAS, Savings target %). You can edit everything.
+                Use the format picker by the Download button. <strong>CSV</strong>, <strong>PDF</strong>, and{" "}
+                <strong>Text</strong> give a minimalist summary of just your pay numbers (monthly + annual) — handy
+                for importing elsewhere, printing, or filing with your LES. The PDF offers Classic, Modern, and
+                Compact layouts.
+              </p>
+              <p className="mt-2">
+                <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot; tab that pre-fills your
+                pay and suggests a hybrid plan (Housing about BAH, Food about BAS, Savings target %). You can edit
+                everything.
               </p>
             </div>
           </div>

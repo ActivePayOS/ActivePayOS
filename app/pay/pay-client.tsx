@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getBahLookup } from "@/lib/pay/bah";
+import SankeySvg from "@/components/sankey/SankeySvg";
+import { useThemeColors } from "@/components/sankey/useThemeColors";
+import { buildFlowGraph } from "@/lib/sankey/model";
+import { downloadPng } from "@/lib/sankey/export";
 import {
   getStateTaxContext,
   stateTaxContexts,
@@ -265,6 +269,37 @@ export default function PayClient({
   const [pdfLayout, setPdfLayout] = useState<PdfLayout>("classic");
   const [resultsView, setResultsView] = useState<"summary" | "visuals">("summary");
 
+  // Inflow Sankey for the Visuals tab: pay components → monthly pay → take-home / FICA.
+  const sankeyColors = useThemeColors();
+  const paySvgRef = useRef<SVGSVGElement>(null);
+  const payFlow = useMemo(
+    () =>
+      buildFlowGraph(
+        [
+          { id: "base", label: "Base Pay", value: basePay, color: "#3b82f6" },
+          { id: "bah", label: "BAH", value: bah ?? 0, color: "#10b981" },
+          { id: "bas", label: "BAS", value: basRate, color: "#f59e0b" },
+        ],
+        [
+          {
+            id: "takehome",
+            label: "Take-home (pre-withholding)",
+            value: estimatedTakeHomeBeforeWithholding,
+            color: "#22c55e",
+          },
+          { id: "fica", label: "Est. FICA", value: estimatedFicaTotal, color: "#ef4444" },
+        ],
+        { poolColor: sankeyColors.muted, poolLabel: "Monthly Pay" }
+      ),
+    [basePay, bah, basRate, estimatedTakeHomeBeforeWithholding, estimatedFicaTotal, sankeyColors.muted]
+  );
+
+  function exportPaySankey() {
+    if (paySvgRef.current) {
+      downloadPng(paySvgRef.current, `activepayos_pay_flow_${grade}_${year}.png`, 2, sankeyColors.card);
+    }
+  }
+
   async function downloadBudget() {
     try {
       if (receivesBah && (!zip || zip.trim().length === 0)) {
@@ -342,7 +377,7 @@ export default function PayClient({
 
   return (
     <main className="space-y-10">
-      <header className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+      <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">
@@ -405,16 +440,13 @@ export default function PayClient({
             </button>
           </div>
         </div>
-      </header>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
-          <h2 className="text-lg font-semibold">Inputs (Start Here!)</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Set your year, grade, and time in service.
-          </p>
+        <h2 className="mt-8 border-t pt-6 text-lg font-semibold">Inputs (Start Here!)</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Set your year, grade, and time in service.
+        </p>
 
-          <div className="mt-6 grid gap-4">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="block text-sm font-medium">Year</label>
               <select
@@ -490,7 +522,7 @@ export default function PayClient({
               </p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 sm:col-span-2 md:grid-cols-2 lg:col-span-4">
               <div className={!receivesBah ? "opacity-60" : ""}>
                 <label className="block text-sm font-medium">
                   Duty ZIP (for BAH)
@@ -543,7 +575,7 @@ export default function PayClient({
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
+            <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600 sm:col-span-2 lg:col-span-4">
               <div className="font-medium text-gray-900">Export options</div>
               <p className="mt-1">
                 Use the format picker by the Download button. <strong>CSV</strong>, <strong>PDF</strong>, and{" "}
@@ -616,6 +648,35 @@ export default function PayClient({
 
           {resultsView === "visuals" && (
             <div className="mt-6 space-y-6">
+              <div className="rounded-2xl border p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">
+                    Where your pay comes from — and what&apos;s left
+                  </span>
+                  <button
+                    type="button"
+                    onClick={exportPaySankey}
+                    className="rounded-full border px-3 py-1 text-xs font-medium hover:bg-gray-100"
+                    title="Download this chart as a PNG (generated in your browser)"
+                  >
+                    Export PNG
+                  </button>
+                </div>
+                <div className="overflow-hidden rounded-xl border">
+                  <SankeySvg
+                    graph={payFlow}
+                    colors={sankeyColors}
+                    svgRef={paySvgRef}
+                    leftCaption="PAY COMPONENTS"
+                    rightCaption="TAKE-HOME & TAX"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Base Pay, BAH, and BAS flow into your monthly pay; estimated FICA (Social Security
+                  + Medicare) is split out from take-home. Estimates only — verify with your LES.
+                </p>
+              </div>
+
               <div className="grid gap-6 sm:grid-cols-2 sm:items-center">
                 <div className="flex items-center justify-center">
                   <div className="relative h-44 w-44">
@@ -852,7 +913,6 @@ export default function PayClient({
             </>
           )}
         </section>
-      </div>
 
       <section className="rounded-3xl border bg-gray-50 p-8">
       <h2 className="text-lg font-semibold">Understanding Your Military Pay (LES)</h2>

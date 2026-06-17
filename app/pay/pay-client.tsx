@@ -336,7 +336,9 @@ export default function PayClient({
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [pdfLayout] = useState<PdfLayout>("modern");
   const [resultsView, setResultsView] = useState<ResultsView>("summary");
-  const [splitLayout, setSplitLayout] = useState(false);
+  // Default to side-by-side on wide screens; the wrapper's `lg:` grid keeps
+  // phones single-column (stacked) regardless of this value.
+  const [splitLayout, setSplitLayout] = useState(true);
 
   // Full take-home estimate (federal + state tax, FICA, TSP, SGLI).
   const takeHome = useMemo(
@@ -648,7 +650,7 @@ export default function PayClient({
           Set your year, grade, and time in service.
         </p>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label htmlFor="branch" className="block text-sm font-medium">Branch</label>
               <select
@@ -816,7 +818,7 @@ export default function PayClient({
               Adds federal &amp; state tax, FICA, TSP, and SGLI to estimate what actually lands in
               your bank account.
             </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label htmlFor="filing-status" className="block text-sm font-medium">
                   Tax filing status

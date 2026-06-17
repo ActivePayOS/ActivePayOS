@@ -95,6 +95,15 @@ const LIGHT_EXPORT_COLORS: ThemeColors = {
   brandBlue: "#0b5cff",
 };
 
+type ResultsView = "summary" | "visuals" | "compare" | "civilian" | "statetax";
+const RESULT_TABS: { value: ResultsView; label: string }[] = [
+  { value: "summary", label: "Summary" },
+  { value: "visuals", label: "Visuals" },
+  { value: "compare", label: "Compare salary" },
+  { value: "civilian", label: "Civilian-equivalent salary" },
+  { value: "statetax", label: "State tax disclaimer" },
+];
+
 type BasePayData = {
   year: number;
   tables: Record<string, Partial<Record<PayGrade, Array<number | null>>>>;
@@ -220,7 +229,7 @@ export default function PayClient({
   const specialIdRef = useRef(0);
 
   // Rank / scenario comparator
-  const [showCompare, setShowCompare] = useState(false);
+  const [showCompare, setShowCompare] = useState(true);
   const [bGrade, setBGrade] = useState<PayGrade>("O-2");
   const [bYos, setBYos] = useState<number>(0);
 
@@ -317,7 +326,7 @@ export default function PayClient({
   const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [pdfLayout] = useState<PdfLayout>("modern");
-  const [resultsView, setResultsView] = useState<"summary" | "visuals">("summary");
+  const [resultsView, setResultsView] = useState<ResultsView>("summary");
   const [splitLayout, setSplitLayout] = useState(false);
 
   // Full take-home estimate (federal + state tax, FICA, TSP, SGLI).
@@ -1025,29 +1034,21 @@ export default function PayClient({
           </div>
 
           {/* Results view tabs */}
-          <div className="mt-6 inline-flex rounded-full border p-1 text-sm">
-            <button
-              type="button"
-              onClick={() => setResultsView("summary")}
-              className={`rounded-full px-4 py-1.5 font-medium transition ${
-                resultsView === "summary"
-                  ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Summary
-            </button>
-            <button
-              type="button"
-              onClick={() => setResultsView("visuals")}
-              className={`rounded-full px-4 py-1.5 font-medium transition ${
-                resultsView === "visuals"
-                  ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Visuals
-            </button>
+          <div className="mt-6 flex flex-wrap gap-1 rounded-2xl border p-1 text-sm">
+            {RESULT_TABS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setResultsView(t.value)}
+                className={`rounded-full px-3 py-1.5 font-medium transition ${
+                  resultsView === t.value
+                    ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
           {resultsView === "visuals" && (
@@ -1236,6 +1237,11 @@ export default function PayClient({
             </div>
           </div>
 
+            </>
+          )}
+
+          {resultsView === "civilian" && (
+            <>
           <div className="mt-6 rounded-2xl border p-5">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Civilian-equivalent salary</div>
@@ -1259,6 +1265,11 @@ export default function PayClient({
             </p>
           </div>
 
+            </>
+          )}
+
+          {resultsView === "compare" && (
+            <>
           <div className="mt-6 rounded-2xl border p-5">
             <button
               type="button"
@@ -1352,6 +1363,11 @@ export default function PayClient({
             )}
           </div>
 
+            </>
+          )}
+
+          {resultsView === "summary" && (
+            <>
           <div className="mt-6 rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
             <div className="font-medium text-gray-900">Important note</div>
             <p className="mt-1">
@@ -1402,6 +1418,11 @@ export default function PayClient({
             })}
           </div>
 
+            </>
+          )}
+
+          {resultsView === "statetax" && (
+            <>
           <div className="mt-6 rounded-2xl border bg-white p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>

@@ -69,6 +69,15 @@ function federalTaxAnnual(taxable: number, status: FilingStatus): number {
   return tax;
 }
 
+function federalMarginalRate(taxable: number, status: FilingStatus): number {
+  const brackets = FEDERAL_BRACKETS_2026[status];
+  if (taxable <= 0) return brackets[0].rate;
+  for (const b of brackets) {
+    if (taxable <= b.upTo) return b.rate;
+  }
+  return brackets[brackets.length - 1].rate;
+}
+
 export type TakeHomeInput = {
   basePayMonthly: number;
   bahMonthly: number;
@@ -96,6 +105,7 @@ export type TakeHomeResult = {
   totalDeductionsMonthly: number;
   takeHomeMonthly: number;
   effectiveTaxRate: number; // (fed + state + FICA) / gross
+  federalMarginalRate: number; // top federal bracket reached
 };
 
 export function computeTakeHome(i: TakeHomeInput): TakeHomeResult {
@@ -154,5 +164,6 @@ export function computeTakeHome(i: TakeHomeInput): TakeHomeResult {
     totalDeductionsMonthly,
     takeHomeMonthly,
     effectiveTaxRate,
+    federalMarginalRate: federalMarginalRate(federalTaxableAnnual, i.filingStatus),
   };
 }

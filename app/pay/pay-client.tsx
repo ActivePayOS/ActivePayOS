@@ -37,12 +37,6 @@ const EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
   { value: "xlsx", label: "Excel — full budget workbook" },
 ];
 
-const PDF_LAYOUTS: { value: PdfLayout; label: string }[] = [
-  { value: "classic", label: "Classic" },
-  { value: "modern", label: "Modern" },
-  { value: "compact", label: "Compact card" },
-];
-
 const EXPORT_EXT: Record<ExportFormat, string> = {
   xlsx: "xlsx",
   csv: "csv",
@@ -277,8 +271,9 @@ export default function PayClient({
 
   const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("csv");
-  const [pdfLayout, setPdfLayout] = useState<PdfLayout>("classic");
+  const [pdfLayout] = useState<PdfLayout>("modern");
   const [resultsView, setResultsView] = useState<"summary" | "visuals">("summary");
+  const [splitLayout, setSplitLayout] = useState(false);
 
   // Full take-home estimate (federal + state tax, FICA, TSP, SGLI).
   const takeHome = useMemo(
@@ -319,6 +314,18 @@ export default function PayClient({
       ),
     [basePay, bah, basRate, takeHome, sankeyColors.muted]
   );
+
+  // Civilian-equivalent salary: tax-free allowances make total comp worth more
+  // than the headline number, so a civilian needs a higher gross to match it.
+  const civilianEquivalent = useMemo(() => {
+    const grossAnnual = takeHome.grossMonthly * 12;
+    const taxAnnual =
+      (takeHome.federalTaxMonthly + takeHome.stateTaxMonthly + takeHome.ficaMonthly) * 12;
+    const afterTax = grossAnnual - taxAnnual;
+    const combinedMarginal = Math.min(0.6, takeHome.federalMarginalRate + stateTaxPct + 0.0765);
+    const equivAnnual = combinedMarginal < 1 ? afterTax / (1 - combinedMarginal) : afterTax;
+    return { equivAnnual, combinedMarginal };
+  }, [takeHome, stateTaxPct]);
 
   function exportPaySankey() {
     if (paySvgRef.current) {
@@ -418,6 +425,32 @@ export default function PayClient({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 md:mt-0">
+            <span
+              className="hidden items-center rounded-full border p-1 text-xs lg:inline-flex"
+              role="group"
+              aria-label="Layout"
+              title="Side-by-side is available on wider screens"
+            >
+              <button
+                type="button"
+                onClick={() => setSplitLayout(false)}
+                className={`rounded-full px-3 py-1 font-medium transition ${
+                  !splitLayout ? "bg-[var(--field-bg)] text-[var(--field-text)]" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Stacked
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitLayout(true)}
+                className={`rounded-full px-3 py-1 font-medium transition ${
+                  splitLayout ? "bg-[var(--field-bg)] text-[var(--field-text)]" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Side by side
+              </button>
+            </span>
+
             <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-700">
               Data: Base Pay + BAS + BAH (Live)
             </span>
@@ -439,22 +472,6 @@ export default function PayClient({
               ))}
             </select>
 
-            {format === "pdf" && (
-              <select
-                aria-label="PDF layout"
-                value={pdfLayout}
-                onChange={(e) => setPdfLayout(e.target.value as PdfLayout)}
-                className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-                title="Choose a PDF layout"
-              >
-                {PDF_LAYOUTS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label} layout
-                  </option>
-                ))}
-              </select>
-            )}
-
             <button
               type="button"
               onClick={downloadBudget}
@@ -466,8 +483,11 @@ export default function PayClient({
             </button>
           </div>
         </div>
+      </section>
 
-        <h2 className="mt-8 border-t pt-6 text-lg font-semibold">Inputs (Start Here!)</h2>
+      <div className={splitLayout ? "grid gap-6 lg:grid-cols-2 lg:items-start" : "space-y-10"}>
+        <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+          <h2 className="text-lg font-semibold">Inputs (Start Here!)</h2>
         <p className="mt-1 text-sm text-gray-600">
           Set your year, grade, and time in service.
         </p>
@@ -606,8 +626,8 @@ export default function PayClient({
               <p className="mt-1">
                 Use the format picker by the Download button. <strong>CSV</strong>, <strong>PDF</strong>, and{" "}
                 <strong>Text</strong> give a minimalist summary of just your pay numbers (monthly + annual) — handy
-                for importing elsewhere, printing, or filing with your LES. The PDF offers Classic, Modern, and
-                Compact layouts.
+                for importing elsewhere, printing, or filing with your LES. The PDF is a clean, printable
+                summary.
               </p>
               <p className="mt-2">
                 <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot; tab that pre-fills your
@@ -965,6 +985,29 @@ export default function PayClient({
             </div>
           </div>
 
+          <div className="mt-6 rounded-2xl border p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Civilian-equivalent salary</div>
+              <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
+                Estimate
+              </span>
+            </div>
+            <div className="mt-3 text-3xl font-bold">
+              {fmtUSD0(civilianEquivalent.equivAnnual)}
+              <span className="text-base font-normal text-gray-500"> /yr</span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              Because BAH and BAS are tax-free, your military pay is worth more than the headline
+              number. A civilian would need roughly this gross salary to take home the same amount, at
+              about a {(civilianEquivalent.combinedMarginal * 100).toFixed(0)}% combined marginal rate
+              (federal + state + FICA).
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              Rough estimate. It excludes the value of military healthcare, the BRS pension and TSP
+              match, and other benefits — so your true total compensation is higher.
+            </p>
+          </div>
+
           <div className="mt-6 rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
             <div className="font-medium text-gray-900">Important note</div>
             <p className="mt-1">
@@ -1080,6 +1123,7 @@ export default function PayClient({
             </>
           )}
         </section>
+      </div>
 
       <section className="rounded-3xl border bg-gray-50 p-8">
       <h2 className="text-lg font-semibold">Understanding Your Military Pay (LES)</h2>

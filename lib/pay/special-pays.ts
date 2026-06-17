@@ -12,10 +12,16 @@ export type SpecialPay = {
   taxable: boolean;
 };
 
+import type { BranchId } from "./branches";
+
 export type SpecialPayPreset = {
   label: string;
   monthly: number;
   taxable: boolean;
+  // Branches this pay is specific to. Omitted = available DoD-wide. These are
+  // surfaced ADDITIVELY when the branch is selected — nothing universal is
+  // ever hidden.
+  branches?: BranchId[];
 };
 
 export const SPECIAL_PAY_PRESETS: SpecialPayPreset[] = [
@@ -24,8 +30,8 @@ export const SPECIAL_PAY_PRESETS: SpecialPayPreset[] = [
   { label: "Parachute (Jump) Pay", monthly: 150, taxable: true },
   { label: "HALO Parachute Pay", monthly: 225, taxable: true },
   { label: "Dive Pay", monthly: 240, taxable: true },
-  { label: "Career Sea Pay", monthly: 200, taxable: true },
-  { label: "Submarine Duty Pay", monthly: 300, taxable: true },
+  { label: "Career Sea Pay", monthly: 200, taxable: true, branches: ["navy", "uscg", "usmc"] },
+  { label: "Submarine Duty Pay", monthly: 300, taxable: true, branches: ["navy"] },
   { label: "Demolition / EOD (HDIP)", monthly: 150, taxable: true },
   { label: "Foreign Language Proficiency Bonus", monthly: 200, taxable: true },
   { label: "Hardship Duty Pay (location)", monthly: 100, taxable: true },

@@ -14,6 +14,7 @@ import {
   type TspType,
 } from "@/lib/pay/takehome";
 import { SPECIAL_PAY_PRESETS, SPECIAL_PAY_COLORS, type SpecialPay } from "@/lib/pay/special-pays";
+import { BRANCHES, getBranch, type BranchId } from "@/lib/pay/branches";
 import { buildPaySummary } from "@/lib/export/summary";
 import { generatePayPdf } from "@/lib/export/pdf";
 import {
@@ -202,6 +203,7 @@ export default function PayClient({
   const initialSupportedYear = YEARS.find((y) => y === initialYear) ?? YEARS[0];
   const [year, setYear] = useState<(typeof YEARS)[number]>(initialSupportedYear);
   const [grade, setGrade] = useState<PayGrade>("O-1");
+  const [branch, setBranch] = useState<BranchId | "">("");
   const [yos, setYos] = useState<number>(0);
   const [zip, setZip] = useState<string>("");
   const [receivesBah, setReceivesBah] = useState<boolean>(true);
@@ -264,6 +266,12 @@ export default function PayClient({
   const specialTaxable = specialPays.reduce((a, s) => a + (s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
   const specialNonTax = specialPays.reduce((a, s) => a + (!s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
   const specialTotal = specialTaxable + specialNonTax;
+
+  const branchInfo = getBranch(branch);
+  // Branch-specific pays are surfaced additively; universal pays always show.
+  const visibleSpecialPresets = SPECIAL_PAY_PRESETS.filter(
+    (preset) => !preset.branches || (branch && preset.branches.includes(branch))
+  );
 
   const taxableIncomeMonthly = basePay + specialTaxable;
   const nonTaxableIncomeMonthly = (bah ?? 0) + basRate + specialNonTax;
@@ -545,11 +553,25 @@ export default function PayClient({
   return (
     <main className="space-y-10">
       <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+        {branchInfo && (
+          <div
+            className="mb-4 h-1.5 w-20 rounded-full"
+            style={{ backgroundColor: branchInfo.accent }}
+          />
+        )}
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Pay Calculator
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight">Pay Calculator</h1>
+              {branchInfo && (
+                <span
+                  className="rounded-full px-3 py-1 text-xs font-semibold"
+                  style={{ backgroundColor: branchInfo.accent, color: branchInfo.onAccent }}
+                >
+                  {branchInfo.name}
+                </span>
+              )}
+            </div>
             <p className="mt-2 text-sm text-gray-600">
               Monthly pay components with a clear taxable vs non-taxable breakdown.
             </p>
@@ -627,6 +649,23 @@ export default function PayClient({
         </p>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label htmlFor="branch" className="block text-sm font-medium">Branch</label>
+              <select
+                id="branch"
+                className="field mt-1 w-full rounded-xl px-3 py-2"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value as BranchId | "")}
+              >
+                <option value="">Select branch</option>
+                {BRANCHES.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium">Year</label>
               <select
@@ -909,7 +948,7 @@ export default function PayClient({
                     aria-label="Add a special pay"
                     value=""
                     onChange={(e) => {
-                      const preset = SPECIAL_PAY_PRESETS[Number(e.target.value)];
+                      const preset = visibleSpecialPresets[Number(e.target.value)];
                       if (!preset) return;
                       specialIdRef.current += 1;
                       setSpecialPays((prev) => [
@@ -920,7 +959,7 @@ export default function PayClient({
                     className="field rounded-xl px-3 py-2 text-sm"
                   >
                     <option value="">Add a pay…</option>
-                    {SPECIAL_PAY_PRESETS.map((p, i) => (
+                    {visibleSpecialPresets.map((p, i) => (
                       <option key={p.label} value={i}>
                         {p.label}
                       </option>

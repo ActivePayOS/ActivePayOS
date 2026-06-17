@@ -31,11 +31,11 @@ function subscribe(callback: () => void) {
 
 function getSnapshot(): Theme {
   const t = document.documentElement.getAttribute("data-theme");
-  return t === "light" || t === "neon" ? t : "dark";
+  return t === "dark" || t === "neon" ? t : "light";
 }
 
 function getServerSnapshot(): Theme {
-  return "dark";
+  return "light";
 }
 
 export default function ThemeToggle() {

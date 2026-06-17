@@ -16,15 +16,15 @@ export type ThemeColors = {
   brandBlue: string;
 };
 
-// Matches the dark theme defaults in globals.css (the app's default theme),
+// Matches the light theme defaults in globals.css (the app's default theme),
 // used for SSR / first paint before the real values are read on the client.
 const FALLBACK: ThemeColors = {
-  foreground: "#f7fbff",
-  muted: "#b7c4d6",
-  line: "#263852",
-  card: "#0c1424",
-  cardMuted: "#111d31",
-  brandBlue: "#3b82ff",
+  foreground: "#07183b",
+  muted: "#526176",
+  line: "#d8e0ec",
+  card: "#ffffff",
+  cardMuted: "#f1f5f9",
+  brandBlue: "#0b5cff",
 };
 
 // useSyncExternalStore requires getSnapshot to return a referentially stable

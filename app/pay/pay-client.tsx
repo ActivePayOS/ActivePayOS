@@ -336,9 +336,8 @@ export default function PayClient({
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [pdfLayout] = useState<PdfLayout>("modern");
   const [resultsView, setResultsView] = useState<ResultsView>("summary");
-  // Default to side-by-side on wide screens; the wrapper's `lg:` grid keeps
-  // phones single-column (stacked) regardless of this value.
-  const [splitLayout, setSplitLayout] = useState(true);
+  // Default to stacked; users can switch to side-by-side on wide screens.
+  const [splitLayout, setSplitLayout] = useState(false);
 
   // Full take-home estimate (federal + state tax, FICA, TSP, SGLI).
   const takeHome = useMemo(

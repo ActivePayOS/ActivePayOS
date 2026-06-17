@@ -9,6 +9,12 @@ import {
   fmtUSD0,
   type BudgetItem,
 } from "@/lib/sankey/model";
+import {
+  DEFAULT_FUND_ALLOCATION,
+  TSP_ELECTIVE_DEFERRAL_LIMIT_2026,
+  TSP_FUNDS,
+  type FundAllocation,
+} from "@/lib/pay/tsp";
 
 const STORAGE_KEY = "activepayos:budget:v1";
 
@@ -37,7 +43,15 @@ const DEFAULT_EXPENSES: BudgetItem[] = [
 // One-time read of any budget the user previously saved on THIS device.
 // Used as a lazy useState initializer so there is no setState-in-effect and no
 // hydration mismatch (the interactive UI is gated behind `mounted`).
-function loadSaved(): { income: BudgetItem[]; expenses: BudgetItem[] } | null {
+type SavedBudget = {
+  income: BudgetItem[];
+  expenses: BudgetItem[];
+  tspPct?: number;
+  tspBaseId?: string;
+  fundAlloc?: FundAllocation;
+};
+
+function loadSaved(): SavedBudget | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -46,7 +60,14 @@ function loadSaved(): { income: BudgetItem[]; expenses: BudgetItem[] } | null {
     const income = Array.isArray(parsed?.income) ? parsed.income : null;
     const expenses = Array.isArray(parsed?.expenses) ? parsed.expenses : null;
     if (!income || !expenses) return null;
-    return { income, expenses };
+    return {
+      income,
+      expenses,
+      tspPct: typeof parsed.tspPct === "number" ? parsed.tspPct : undefined,
+      tspBaseId: typeof parsed.tspBaseId === "string" ? parsed.tspBaseId : undefined,
+      fundAlloc:
+        parsed.fundAlloc && typeof parsed.fundAlloc === "object" ? parsed.fundAlloc : undefined,
+    };
   } catch {
     return null;
   }
@@ -62,6 +83,14 @@ export default function BudgetClient() {
   const [captureInto, setCaptureInto] = useState<string>("");
   const [savedNote, setSavedNote] = useState<string | null>(null);
 
+  // TSP (retirement)
+  const [tspPct, setTspPct] = useState<number>(() => loadSaved()?.tspPct ?? 0.05);
+  const [tspBaseId, setTspBaseId] = useState<string>(() => loadSaved()?.tspBaseId ?? "inc-1");
+  const [fundAlloc, setFundAlloc] = useState<FundAllocation>(
+    () => loadSaved()?.fundAlloc ?? DEFAULT_FUND_ALLOCATION
+  );
+  const [showFunds, setShowFunds] = useState(false);
+
   // Render the interactive UI only on the client so theme colors and any
   // device-saved budget match between hydration and the live DOM.
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -74,14 +103,33 @@ export default function BudgetClient() {
   const captureExists = expenses.some((e) => e.id === captureInto);
   const captureId = captureExists ? captureInto : null;
 
+  // TSP contribution: a % of a chosen income (most people know the %, not the $).
+  const tspBase = income.find((i) => i.id === tspBaseId) ?? income[0];
+  const tspMonthly = Math.max(0, tspBase?.amount ?? 0) * tspPct;
+  const tspAnnual = tspMonthly * 12;
+  const tspPctToMax =
+    TSP_ELECTIVE_DEFERRAL_LIMIT_2026 > 0 ? tspAnnual / TSP_ELECTIVE_DEFERRAL_LIMIT_2026 : 0;
+  const fundTotal = TSP_FUNDS.reduce((a, f) => a + (fundAlloc[f.key] || 0), 0);
+
+  const visibleExpenseTotal = expenses.reduce((a, e) => a + (e.amount > 0 ? e.amount : 0), 0);
+
+  // TSP flows through the Sankey as its own outflow when contributing.
+  const expensesForGraph = useMemo<BudgetItem[]>(
+    () =>
+      tspMonthly > 0
+        ? [...expenses, { id: "__tsp__", label: `TSP (${Math.round(tspPct * 100)}%)`, amount: tspMonthly }]
+        : expenses,
+    [expenses, tspMonthly, tspPct]
+  );
+
   const graph = useMemo(
     () =>
-      buildBudgetGraph(income, expenses, {
+      buildBudgetGraph(income, expensesForGraph, {
         poolColor: colors.muted,
         poolLabel: "Total Income",
         absorbRemainderInto: captureId,
       }),
-    [income, expenses, colors.muted, captureId]
+    [income, expensesForGraph, colors.muted, captureId]
   );
 
   const leftover = graph.leftover;
@@ -101,7 +149,10 @@ export default function BudgetClient() {
 
   function saveLocal() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ income, expenses }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ income, expenses, tspPct, tspBaseId, fundAlloc })
+      );
       setSavedNote("Saved to this device.");
     } catch {
       setSavedNote("Couldn't save (storage blocked).");
@@ -116,6 +167,9 @@ export default function BudgetClient() {
     setIncome(DEFAULT_INCOME);
     setExpenses(DEFAULT_EXPENSES);
     setCaptureInto("");
+    setTspPct(0.05);
+    setTspBaseId("inc-1");
+    setFundAlloc(DEFAULT_FUND_ALLOCATION);
     setSavedNote("Cleared saved budget and reset to the example.");
   }
 
@@ -182,7 +236,7 @@ export default function BudgetClient() {
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Expenses &amp; savings</h2>
-                <span className="text-sm font-semibold">{fmtUSD0(graph.totalExpense)}</span>
+                <span className="text-sm font-semibold">{fmtUSD0(visibleExpenseTotal)}</span>
               </div>
               <div className="mt-4 space-y-2">
                 {expenses.map((it) => (
@@ -202,6 +256,161 @@ export default function BudgetClient() {
               >
                 + Add expense
               </button>
+            </div>
+
+            {/* ------------------------------ TSP ------------------------------ */}
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">TSP (retirement)</h2>
+                <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Most people know their TSP as a percent — enter it and we&apos;ll do the math. It
+                flows through the chart as its own outflow.
+              </p>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-gray-600">Contribute</span>
+                <div className="field flex items-center rounded-lg px-2 py-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round(tspPct * 100)}
+                    onChange={(e) =>
+                      setTspPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100)
+                    }
+                    className="w-12 bg-transparent text-right outline-none"
+                    aria-label="TSP percent"
+                  />
+                  <span className="text-gray-500">%</span>
+                </div>
+                <span className="text-gray-600">of</span>
+                <select
+                  value={tspBase?.id ?? ""}
+                  onChange={(e) => setTspBaseId(e.target.value)}
+                  className="field rounded-lg px-2 py-1"
+                  aria-label="TSP base income"
+                >
+                  {income.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.label || "Income"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                ≈ {fmtUSD0(tspMonthly)}/mo · {fmtUSD0(tspAnnual)}/yr
+              </div>
+
+              {/* Annual limit progress */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600">2026 annual limit</span>
+                  <span className="text-gray-500">
+                    {fmtUSD0(tspAnnual)} / {fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026)}
+                  </span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className="h-2 rounded-full"
+                    style={{
+                      width: `${Math.min(100, tspPctToMax * 100)}%`,
+                      backgroundColor:
+                        tspPctToMax > 1 ? "#ef4444" : tspPctToMax >= 0.95 ? "#f59e0b" : "#22c55e",
+                    }}
+                  />
+                </div>
+                <div
+                  className="mt-1 text-xs font-medium"
+                  style={{
+                    color: tspPctToMax > 1 ? "#ef4444" : tspPctToMax >= 0.95 ? "#b45309" : "#15803d",
+                  }}
+                >
+                  {tspAnnual <= 0
+                    ? "Set a percentage to start contributing."
+                    : tspPctToMax > 1
+                    ? `Over the annual limit by ${fmtUSD0(
+                        tspAnnual - TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                      )} — payroll stops contributions once you hit the cap.`
+                    : tspPctToMax >= 0.95
+                    ? "You'll just about max out the annual limit — nice."
+                    : `${fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026 - tspAnnual)} (${Math.round(
+                        (1 - tspPctToMax) * 100
+                      )}%) left before you hit the limit.`}
+                </div>
+              </div>
+
+              {/* Fund allocation (collapsible) */}
+              <button
+                type="button"
+                onClick={() => setShowFunds((s) => !s)}
+                className="mt-4 text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
+              >
+                {showFunds ? "Hide" : "Show"} fund allocation
+              </button>
+
+              {showFunds && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-200">
+                    {TSP_FUNDS.map((f) =>
+                      (fundAlloc[f.key] || 0) > 0 ? (
+                        <div
+                          key={f.key}
+                          style={{
+                            width: `${fundTotal > 0 ? ((fundAlloc[f.key] || 0) / fundTotal) * 100 : 0}%`,
+                            backgroundColor: f.color,
+                          }}
+                          title={`${f.name}: ${fundAlloc[f.key]}%`}
+                        />
+                      ) : null
+                    )}
+                  </div>
+                  {fundTotal !== 100 && (
+                    <p className="text-xs text-amber-600">
+                      Allocations total {fundTotal}% — aim for 100%.
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {TSP_FUNDS.map((f) => (
+                      <div key={f.key} className="flex items-center gap-2 text-xs">
+                        <span
+                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: f.color }}
+                        />
+                        <span className="w-12 font-medium">{f.name}</span>
+                        <div className="field flex items-center rounded-md px-1.5 py-0.5">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={fundAlloc[f.key] || 0}
+                            onChange={(e) =>
+                              setFundAlloc((prev) => ({
+                                ...prev,
+                                [f.key]: Math.max(0, Math.min(100, Number(e.target.value) || 0)),
+                              }))
+                            }
+                            className="w-10 bg-transparent text-right outline-none"
+                            aria-label={`${f.name} percent`}
+                          />
+                          <span className="text-gray-500">%</span>
+                        </div>
+                        <span className="text-gray-500">
+                          {fmtUSD0((tspMonthly * (fundAlloc[f.key] || 0)) / 100)}/mo
+                        </span>
+                        <span className="hidden flex-1 text-gray-400 sm:block">{f.blurb}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Prefer one-and-done? TSP Lifecycle (L) funds auto-diversify and rebalance toward a
+                    target retirement date.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="rounded-3xl border bg-gray-50 p-5">

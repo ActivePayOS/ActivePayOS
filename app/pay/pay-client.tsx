@@ -5,7 +5,8 @@ import { getBahLookup } from "@/lib/pay/bah";
 import SankeySvg from "@/components/sankey/SankeySvg";
 import { useThemeColors, type ThemeColors } from "@/components/sankey/useThemeColors";
 import { buildFlowGraph } from "@/lib/sankey/model";
-import { downloadPng, svgToPngBytes } from "@/lib/sankey/export";
+import { downloadPng, downloadSvg, svgToPngBytes } from "@/lib/sankey/export";
+import CompareChart from "@/components/charts/CompareChart";
 import {
   computeTakeHome,
   SGLI_OPTIONS,
@@ -377,6 +378,7 @@ export default function PayClient({
   const sankeyColors = useThemeColors();
   const paySvgRef = useRef<SVGSVGElement>(null);
   const exportSankeyRef = useRef<SVGSVGElement>(null);
+  const compareSvgRef = useRef<SVGSVGElement>(null);
   const payFlow = useMemo(
     () =>
       buildFlowGraph(
@@ -1359,6 +1361,49 @@ export default function PayClient({
                   Same duty location, dependents, TSP, and special pays — only grade and years of
                   service change. Pick any grade to compare a promotion, or officer vs. enlisted.
                 </p>
+
+                <div className="overflow-hidden rounded-2xl border">
+                  <CompareChart
+                    gradeA={grade}
+                    gradeB={bGrade}
+                    metrics={[
+                      { label: "Gross / mo", a: total, b: compare.bGross },
+                      { label: "Take-home / mo", a: takeHome.takeHomeMonthly, b: compare.bTakeHome.takeHomeMonthly },
+                    ]}
+                    colors={sankeyColors}
+                    svgRef={compareSvgRef}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (compareSvgRef.current)
+                        downloadPng(
+                          compareSvgRef.current,
+                          `activepayos_compare_${grade}_vs_${bGrade}.png`,
+                          2,
+                          sankeyColors.card
+                        );
+                    }}
+                    className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  >
+                    Export PNG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (compareSvgRef.current)
+                        downloadSvg(compareSvgRef.current, `activepayos_compare_${grade}_vs_${bGrade}.svg`);
+                    }}
+                    className="rounded-full border px-4 py-2 text-sm font-medium hover:bg-gray-100"
+                  >
+                    Export SVG
+                  </button>
+                  <span className="text-xs text-gray-500">
+                    Generated in your browser — the image never leaves your device.
+                  </span>
+                </div>
               </div>
             )}
           </div>

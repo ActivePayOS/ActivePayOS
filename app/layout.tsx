@@ -66,11 +66,11 @@ export default function RootLayout({
               <Link href="/" className="hover:text-[var(--brand-blue)]">
                 Pay
               </Link>
-              <Link href="/housing" className="hover:text-[var(--brand-blue)]">
-                Housing
-              </Link>
               <Link href="/budget" className="hover:text-[var(--brand-blue)]">
                 Budget
+              </Link>
+              <Link href="/housing" className="hover:text-[var(--brand-blue)]">
+                Housing
               </Link>
               <Link href="/pcs" className="hover:text-[var(--brand-blue)]">
                 PCS

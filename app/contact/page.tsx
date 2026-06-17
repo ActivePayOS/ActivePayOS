@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { GITHUB_REPO, GITHUB_NEW_ISSUE } from "@/components/ContributeCTA";
+
+export const metadata: Metadata = {
+  title: "Contact",
+  description:
+    "Get in touch with ActivePayOS for questions, bug reports, ideas, and feedback.",
+};
 
 export default function ContactPage() {
   return (

@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Housing",
+  description:
+    "Make the most of your BAH with affordability, rent vs. buy, and housing decisions that protect your budget.",
+};
 
 export default function HousingPage() {
   return (

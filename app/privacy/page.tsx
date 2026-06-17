@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Privacy",
+  description:
+    "How ActivePayOS handles your information. Calculations run in your browser, and the project avoids collecting personal data it does not need.",
+};
 
 const privacySections = [
   {

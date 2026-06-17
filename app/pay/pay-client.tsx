@@ -223,7 +223,7 @@ export default function PayClient({
   const [filingStatus, setFilingStatus] = useState<FilingStatus>("single");
   const [tspPct, setTspPct] = useState<number>(0.05);
   const [tspType, setTspType] = useState<TspType>("traditional");
-  const [sgliMonthly, setSgliMonthly] = useState<number>(31);
+  const [sgliMonthly, setSgliMonthly] = useState<number>(26);
   const [stateTaxPct, setStateTaxPct] = useState<number>(0);
 
   // Special & incentive pays

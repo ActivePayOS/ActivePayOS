@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import zipMha from "@/data/bah/normalized/2026.zipmha.json";
 import bahWith from "@/data/bah/normalized/2026.with.json";
 import bahWithout from "@/data/bah/normalized/2026.without.json";
 import basepay from "@/data/basepay/2026.json";
+
+export const metadata: Metadata = {
+  title: "Accuracy & Sources",
+  description:
+    "How ActivePayOS sources and verifies its 2026 military pay, BAH, and BAS data, and when it was last checked.",
+};
 
 type ZipMhaDataset = {
   year: number;

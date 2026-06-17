@@ -43,14 +43,15 @@ const FEDERAL_BRACKETS_2026: Record<FilingStatus, Bracket[]> = {
 
 const SS_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
-const SS_WAGE_BASE_2026 = 184500; // VERIFY (2025 = 176,100)
+const SS_WAGE_BASE_2026 = 184500; // 2026 SSA Social Security wage base (2025 = 176,100)
 
-// SGLI: $0.06 per $1,000 of coverage per month + $1/month TSGLI.
+// SGLI: $0.05 per $1,000 of coverage per month + $1/month TSGLI.
+// Rate dropped from $0.06 to $0.05 per $1,000 effective July 1, 2025.
 export const SGLI_OPTIONS: { coverage: number; monthly: number; label: string }[] = [
   { coverage: 0, monthly: 0, label: "None" },
-  { coverage: 250000, monthly: 16, label: "$250,000" },
-  { coverage: 400000, monthly: 25, label: "$400,000" },
-  { coverage: 500000, monthly: 31, label: "$500,000 (max)" },
+  { coverage: 250000, monthly: 13.5, label: "$250,000" },
+  { coverage: 400000, monthly: 21, label: "$400,000" },
+  { coverage: 500000, monthly: 26, label: "$500,000 (max)" },
 ];
 
 function federalTaxAnnual(taxable: number, status: FilingStatus): number {

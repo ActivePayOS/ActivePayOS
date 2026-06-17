@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Terms of Use",
+  description:
+    "Terms of use for ActivePayOS, an educational military pay and planning tool. Estimates only; not financial, tax, or legal advice.",
+};
 
 const terms = [
   {

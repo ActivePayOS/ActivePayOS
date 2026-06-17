@@ -3,15 +3,18 @@
 import { useMemo, useRef, useState } from "react";
 import { getBahLookup } from "@/lib/pay/bah";
 import SankeySvg from "@/components/sankey/SankeySvg";
-import { useThemeColors } from "@/components/sankey/useThemeColors";
+import { useThemeColors, type ThemeColors } from "@/components/sankey/useThemeColors";
 import { buildFlowGraph } from "@/lib/sankey/model";
-import { downloadPng } from "@/lib/sankey/export";
+import { downloadPng, svgToPngBytes } from "@/lib/sankey/export";
 import {
   computeTakeHome,
   SGLI_OPTIONS,
   type FilingStatus,
   type TspType,
 } from "@/lib/pay/takehome";
+import { SPECIAL_PAY_PRESETS, SPECIAL_PAY_COLORS, type SpecialPay } from "@/lib/pay/special-pays";
+import { buildPaySummary } from "@/lib/export/summary";
+import { generatePayPdf } from "@/lib/export/pdf";
 import {
   getStateTaxContext,
   stateTaxContexts,
@@ -73,6 +76,24 @@ const SOCIAL_SECURITY_RATE = 0.062;
 const MEDICARE_RATE = 0.0145;
 
 const STATE_RESIDENCY_OPTIONS = stateTaxContexts.map((item) => item.state);
+
+const GRADES: PayGrade[] = [
+  "O-1", "O-2", "O-3", "O-4", "O-5", "O-6", "O-7", "O-8", "O-9", "O-10",
+  "O-1E", "O-2E", "O-3E",
+  "W-1", "W-2", "W-3", "W-4", "W-5",
+  "E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9",
+];
+
+// A fixed light palette for chart images embedded in the (white) PDF, so the
+// export looks clean regardless of the on-screen theme.
+const LIGHT_EXPORT_COLORS: ThemeColors = {
+  foreground: "#07183b",
+  muted: "#526176",
+  line: "#d8e0ec",
+  card: "#ffffff",
+  cardMuted: "#f1f5f9",
+  brandBlue: "#0b5cff",
+};
 
 type BasePayData = {
   year: number;
@@ -193,6 +214,16 @@ export default function PayClient({
   const [sgliMonthly, setSgliMonthly] = useState<number>(31);
   const [stateTaxPct, setStateTaxPct] = useState<number>(0);
 
+  // Special & incentive pays
+  const [specialPays, setSpecialPays] = useState<SpecialPay[]>([]);
+  const [showSpecial, setShowSpecial] = useState(false);
+  const specialIdRef = useRef(0);
+
+  // Rank / scenario comparator
+  const [showCompare, setShowCompare] = useState(false);
+  const [bGrade, setBGrade] = useState<PayGrade>("O-2");
+  const [bYos, setBYos] = useState<number>(0);
+
   const basePay = useMemo(
     () => getBasePayFromData(basepay, year, grade, yos),
     [basepay, year, grade, yos]
@@ -220,8 +251,12 @@ export default function PayClient({
     return "This ZIP is not available in the 2026 local BAH rate data used here. Check the ZIP, try ZIP+4 only if valid, or verify with the official BAH calculator.";
   }, [receivesBah, zip, bahLookup.status]);
 
-  const taxableIncomeMonthly = basePay;
-  const nonTaxableIncomeMonthly = (bah ?? 0) + basRate;
+  const specialTaxable = specialPays.reduce((a, s) => a + (s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
+  const specialNonTax = specialPays.reduce((a, s) => a + (!s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
+  const specialTotal = specialTaxable + specialNonTax;
+
+  const taxableIncomeMonthly = basePay + specialTaxable;
+  const nonTaxableIncomeMonthly = (bah ?? 0) + basRate + specialNonTax;
   const total = taxableIncomeMonthly + nonTaxableIncomeMonthly;
 
   const estimatedSocialSecurity = taxableIncomeMonthly * SOCIAL_SECURITY_RATE;
@@ -245,6 +280,7 @@ export default function PayClient({
   const pctBase = (basePay / denomTotal) * 100;
   const pctBah = ((bah ?? 0) / denomTotal) * 100;
   const pctBas = (basRate / denomTotal) * 100;
+  const pctSpecial = (specialTotal / denomTotal) * 100;
   const pctTaxable = (taxableIncomeMonthly / denomTotal) * 100;
   const pctNonTax = (nonTaxableIncomeMonthly / denomTotal) * 100;
 
@@ -259,10 +295,19 @@ export default function PayClient({
           : "Set to $0 because barracks/government housing is selected.",
       },
       { label: "BAS", value: basRate, hint: "Usually non-taxable. Standard DFAS rate (not location-based)." },
+      ...(specialTotal > 0
+        ? [
+            {
+              label: "Special & incentive pays",
+              value: specialTotal,
+              hint: "Special pays you added (e.g., flight, sea, jump). Taxability varies.",
+            },
+          ]
+        : []),
     ];
     const sum = p.reduce((a, x) => a + (x.value ?? 0), 0);
     return { p, sum };
-  }, [basePay, bah, basRate, receivesBah]);
+  }, [basePay, bah, basRate, receivesBah, specialTotal]);
 
   const yosLabel = useMemo(() => {
     const found = YOS_OPTIONS.find((o) => o.value === yos);
@@ -282,18 +327,47 @@ export default function PayClient({
         basePayMonthly: basePay,
         bahMonthly: bah ?? 0,
         basMonthly: basRate,
+        otherTaxableMonthly: specialTaxable,
+        otherNonTaxableMonthly: specialNonTax,
         filingStatus,
         tspPct,
         tspType,
         sgliMonthly,
         stateTaxRatePct: stateTaxPct,
       }),
-    [basePay, bah, basRate, filingStatus, tspPct, tspType, sgliMonthly, stateTaxPct]
+    [basePay, bah, basRate, specialTaxable, specialNonTax, filingStatus, tspPct, tspType, sgliMonthly, stateTaxPct]
   );
+
+  // Scenario B (comparator): same duty location, settings, and special pays —
+  // different grade and years of service (covers "next rank" and officer↔enlisted).
+  const compare = useMemo(() => {
+    const bBase = getBasePayFromData(basepay, year, bGrade, bYos);
+    const bBasRate = getBasFromData(bas, year, bGrade);
+    const bBah = receivesBah ? getBahLookup(zip, bGrade, dependents).rate ?? 0 : 0;
+    const bTakeHome = computeTakeHome({
+      basePayMonthly: bBase,
+      bahMonthly: bBah,
+      basMonthly: bBasRate,
+      otherTaxableMonthly: specialTaxable,
+      otherNonTaxableMonthly: specialNonTax,
+      filingStatus,
+      tspPct,
+      tspType,
+      sgliMonthly,
+      stateTaxRatePct: stateTaxPct,
+    });
+    const bGross = bBase + bBah + bBasRate + specialTotal;
+    return { bBase, bBah, bBasRate, bGross, bTakeHome };
+  }, [
+    basepay, bas, year, bGrade, bYos, zip, dependents, receivesBah,
+    specialTaxable, specialNonTax, specialTotal,
+    filingStatus, tspPct, tspType, sgliMonthly, stateTaxPct,
+  ]);
 
   // Inflow Sankey for the Visuals tab: pay components → monthly pay → take-home + deductions.
   const sankeyColors = useThemeColors();
   const paySvgRef = useRef<SVGSVGElement>(null);
+  const exportSankeyRef = useRef<SVGSVGElement>(null);
   const payFlow = useMemo(
     () =>
       buildFlowGraph(
@@ -301,6 +375,12 @@ export default function PayClient({
           { id: "base", label: "Base Pay", value: basePay, color: "#3b82f6" },
           { id: "bah", label: "BAH", value: bah ?? 0, color: "#10b981" },
           { id: "bas", label: "BAS", value: basRate, color: "#f59e0b" },
+          ...specialPays.map((s, i) => ({
+            id: `sp-${s.id}`,
+            label: s.label,
+            value: Math.max(0, s.monthly),
+            color: SPECIAL_PAY_COLORS[i % SPECIAL_PAY_COLORS.length],
+          })),
         ],
         [
           { id: "takehome", label: "Take-home", value: takeHome.takeHomeMonthly, color: "#22c55e" },
@@ -312,7 +392,7 @@ export default function PayClient({
         ],
         { poolColor: sankeyColors.muted, poolLabel: "Monthly Pay" }
       ),
-    [basePay, bah, basRate, takeHome, sankeyColors.muted]
+    [basePay, bah, basRate, specialPays, takeHome, sankeyColors.muted]
   );
 
   // Civilian-equivalent salary: tax-free allowances make total comp worth more
@@ -347,6 +427,50 @@ export default function PayClient({
 
       setExporting(true);
 
+      // PDF is generated entirely in the browser (with the pay-flow chart
+      // embedded), so nothing leaves the device for the PDF export.
+      if (format === "pdf") {
+        const zip5 = receivesBah
+          ? String(zip ?? "").trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1]
+          : undefined;
+        const summary = buildPaySummary({
+          year,
+          grade,
+          yosLabel,
+          zip5,
+          receivesBah,
+          dependents,
+          stateOfLegalResidence,
+          baseMonthly: basePay,
+          bahMonthly: bah ?? 0,
+          basMonthly: basRate,
+          otherMonthly: specialTotal,
+          generatedOn: new Date().toISOString().slice(0, 10),
+        });
+        let chartPng: Uint8Array | undefined;
+        if (exportSankeyRef.current) {
+          try {
+            chartPng = await svgToPngBytes(exportSankeyRef.current, 2, "#ffffff");
+          } catch {
+            // fall back to a chartless PDF
+          }
+        }
+        const pdfBytes = await generatePayPdf(summary, "modern", chartPng);
+        const safeZipPdf = receivesBah
+          ? String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "")
+          : "NoBAH";
+        const pdfBlob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
+        const pdfUrl = window.URL.createObjectURL(pdfBlob);
+        const pa = document.createElement("a");
+        pa.href = pdfUrl;
+        pa.download = `activepayos_Pay_${safeZipPdf || "ZIP"}_${grade}_${year}.pdf`;
+        document.body.appendChild(pa);
+        pa.click();
+        pa.remove();
+        window.URL.revokeObjectURL(pdfUrl);
+        return;
+      }
+
       const payload = {
         year,
         grade,
@@ -359,7 +483,7 @@ export default function PayClient({
         basePayMonthly: basePay,
         bahMonthly: bah ?? 0,
         basMonthly: basRate,
-        otherIncomeMonthly: 0,
+        otherIncomeMonthly: specialTotal,
 
         housingTargetPct,
         foodTargetPct,
@@ -394,10 +518,9 @@ export default function PayClient({
         ? String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "")
         : "NoBAH";
       const stem = format === "xlsx" ? "Budget" : "Pay";
-      const layoutSuffix = format === "pdf" ? `_${pdfLayout}` : "";
       const a = document.createElement("a");
       a.href = url;
-      a.download = `activepayos_${stem}_${safeZip || "ZIP"}_${grade}_${year}${layoutSuffix}.${EXPORT_EXT[format]}`;
+      a.download = `activepayos_${stem}_${safeZip || "ZIP"}_${grade}_${year}.${EXPORT_EXT[format]}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -746,6 +869,131 @@ export default function PayClient({
               tax uses the flat rate you enter. Estimates only — your LES is the source of truth.
             </p>
           </div>
+
+          <div className="mt-8 border-t pt-6">
+            <button
+              type="button"
+              onClick={() => setShowSpecial((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="text-lg font-semibold">
+                Special &amp; incentive pays
+                {specialTotal > 0 && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    +{fmtUSD0(specialTotal)}/mo
+                  </span>
+                )}
+              </span>
+              <span className="text-sm text-gray-500">{showSpecial ? "Hide" : "Add"}</span>
+            </button>
+
+            {showSpecial && (
+              <div className="mt-4 space-y-3">
+                <p className="text-xs text-gray-500">
+                  Flight, sea, jump, hazardous-duty, language, SDAP, and more. Amounts are editable
+                  estimates and taxability varies — set the Taxable toggle to match your situation.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Add a special pay"
+                    value=""
+                    onChange={(e) => {
+                      const preset = SPECIAL_PAY_PRESETS[Number(e.target.value)];
+                      if (!preset) return;
+                      specialIdRef.current += 1;
+                      setSpecialPays((prev) => [
+                        ...prev,
+                        { id: `sp-${specialIdRef.current}`, label: preset.label, monthly: preset.monthly, taxable: preset.taxable },
+                      ]);
+                    }}
+                    className="field rounded-xl px-3 py-2 text-sm"
+                  >
+                    <option value="">Add a pay…</option>
+                    {SPECIAL_PAY_PRESETS.map((p, i) => (
+                      <option key={p.label} value={i}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      specialIdRef.current += 1;
+                      setSpecialPays((prev) => [
+                        ...prev,
+                        { id: `sp-${specialIdRef.current}`, label: "Other pay", monthly: 0, taxable: true },
+                      ]);
+                    }}
+                    className="rounded-xl border border-dashed px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+                  >
+                    + Custom
+                  </button>
+                </div>
+
+                {specialPays.length > 0 && (
+                  <div className="space-y-2">
+                    {specialPays.map((sp) => (
+                      <div key={sp.id} className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={sp.label}
+                          onChange={(e) =>
+                            setSpecialPays((prev) =>
+                              prev.map((x) => (x.id === sp.id ? { ...x, label: e.target.value } : x))
+                            )
+                          }
+                          className="field min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm"
+                          aria-label="Special pay label"
+                        />
+                        <div className="field flex items-center rounded-lg px-2 py-1.5">
+                          <span className="text-sm text-gray-500">$</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={10}
+                            value={sp.monthly === 0 ? "" : sp.monthly}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const v = e.target.value === "" ? 0 : Number(e.target.value);
+                              setSpecialPays((prev) =>
+                                prev.map((x) =>
+                                  x.id === sp.id ? { ...x, monthly: Number.isFinite(v) ? Math.max(0, v) : 0 } : x
+                                )
+                              );
+                            }}
+                            className="w-20 bg-transparent text-right text-sm outline-none"
+                            aria-label="Special pay amount"
+                          />
+                        </div>
+                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={sp.taxable}
+                            onChange={(e) =>
+                              setSpecialPays((prev) =>
+                                prev.map((x) => (x.id === sp.id ? { ...x, taxable: e.target.checked } : x))
+                              )
+                            }
+                          />
+                          Taxable
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setSpecialPays((prev) => prev.filter((x) => x.id !== sp.id))}
+                          className="rounded-lg border px-2 py-1.5 text-sm text-gray-500 hover:text-gray-900"
+                          aria-label={`Remove ${sp.label}`}
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
@@ -839,7 +1087,7 @@ export default function PayClient({
                     <div
                       className="h-full w-full rounded-full"
                       style={{
-                        background: `conic-gradient(var(--brand-blue) 0 ${pctBase}%, #10b981 ${pctBase}% ${pctBase + pctBah}%, #f59e0b ${pctBase + pctBah}% 100%)`,
+                        background: `conic-gradient(var(--brand-blue) 0 ${pctBase}%, #10b981 ${pctBase}% ${pctBase + pctBah}%, #f59e0b ${pctBase + pctBah}% ${pctBase + pctBah + pctBas}%, #8b5cf6 ${pctBase + pctBah + pctBas}% 100%)`,
                       }}
                     />
                     <div className="absolute inset-[20%] flex flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
@@ -854,6 +1102,9 @@ export default function PayClient({
                     { label: "Base Pay", value: basePay, color: "var(--brand-blue)", pct: pctBase },
                     { label: "BAH", value: bah ?? 0, color: "#10b981", pct: pctBah },
                     { label: "BAS", value: basRate, color: "#f59e0b", pct: pctBas },
+                    ...(specialTotal > 0
+                      ? [{ label: "Special pays", value: specialTotal, color: "#8b5cf6", pct: pctSpecial }]
+                      : []),
                   ].map((s) => (
                     <div key={s.label} className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 text-sm">
@@ -1006,6 +1257,99 @@ export default function PayClient({
               Rough estimate. It excludes the value of military healthcare, the BRS pension and TSP
               match, and other benefits — so your true total compensation is higher.
             </p>
+          </div>
+
+          <div className="mt-6 rounded-2xl border p-5">
+            <button
+              type="button"
+              onClick={() => setShowCompare((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="text-sm font-medium">Compare to another rank / scenario</span>
+              <span className="text-sm text-gray-500">{showCompare ? "Hide" : "Compare"}</span>
+            </button>
+
+            {showCompare && (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600">Compare grade</label>
+                    <select
+                      value={bGrade}
+                      onChange={(e) => setBGrade(e.target.value as PayGrade)}
+                      className="field mt-1 w-full rounded-lg px-2 py-1.5 text-sm"
+                    >
+                      {GRADES.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600">Years of service</label>
+                    <select
+                      value={bYos}
+                      onChange={(e) => setBYos(Number(e.target.value))}
+                      className="field mt-1 w-full rounded-lg px-2 py-1.5 text-sm"
+                    >
+                      {YOS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const i = GRADES.indexOf(grade);
+                        if (i >= 0 && i < GRADES.length - 1) setBGrade(GRADES[i + 1]);
+                        setBYos(yos);
+                      }}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+                    >
+                      Next grade ↑
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border text-sm">
+                  <div className="grid grid-cols-4 gap-2 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                    <span />
+                    <span className="text-right">You ({grade})</span>
+                    <span className="text-right">{bGrade}</span>
+                    <span className="text-right">Δ</span>
+                  </div>
+                  {[
+                    { label: "Gross / mo", a: total, b: compare.bGross },
+                    { label: "Take-home / mo", a: takeHome.takeHomeMonthly, b: compare.bTakeHome.takeHomeMonthly },
+                    { label: "Gross / yr", a: total * 12, b: compare.bGross * 12 },
+                  ].map((row) => {
+                    const d = row.b - row.a;
+                    return (
+                      <div key={row.label} className="grid grid-cols-4 gap-2 border-t px-3 py-2">
+                        <span className="text-gray-600">{row.label}</span>
+                        <span className="text-right">{fmtUSD0(row.a)}</span>
+                        <span className="text-right">{fmtUSD0(row.b)}</span>
+                        <span
+                          className="text-right font-medium"
+                          style={{ color: d < 0 ? "#ef4444" : "#15803d" }}
+                        >
+                          {d >= 0 ? "+" : "−"}
+                          {fmtUSD0(Math.abs(d))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Same duty location, dependents, TSP, and special pays — only grade and years of
+                  service change. Pick any grade to compare a promotion, or officer vs. enlisted.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
@@ -1174,6 +1518,17 @@ export default function PayClient({
         Official pay information is available through DFAS and your LES.
       </p>
     </section>
+
+      {/* Offscreen, light-themed chart used only for the PDF export (works from any tab). */}
+      <div aria-hidden className="pointer-events-none absolute -left-[9999px] top-0 w-[920px]">
+        <SankeySvg
+          graph={payFlow}
+          colors={LIGHT_EXPORT_COLORS}
+          svgRef={exportSankeyRef}
+          leftCaption="PAY COMPONENTS"
+          rightCaption="TAKE-HOME & TAX"
+        />
+      </div>
     </main>
   );
 }

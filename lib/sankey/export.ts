@@ -49,6 +49,51 @@ export function downloadSvg(svg: SVGSVGElement, filename: string) {
  * resolution (2 = retina-crisp, good for sharing). `background` fills the
  * canvas so the PNG isn't transparent.
  */
+/**
+ * Rasterize an SVG to raw PNG bytes (for embedding in a client-generated PDF).
+ * Same pipeline as downloadPng but returns the bytes instead of downloading.
+ */
+export async function svgToPngBytes(
+  svg: SVGSVGElement,
+  scale = 2,
+  background?: string
+): Promise<Uint8Array> {
+  const vb = svg.viewBox.baseVal;
+  const w = vb && vb.width ? vb.width : svg.clientWidth || 920;
+  const h = vb && vb.height ? vb.height : svg.clientHeight || 480;
+
+  const svgUrl = URL.createObjectURL(
+    new Blob([serializeSvg(svg)], { type: "image/svg+xml;charset=utf-8" })
+  );
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Could not render SVG to image"));
+      img.src = svgUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context unavailable");
+    ctx.scale(scale, scale);
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/png")
+    );
+    if (!blob) throw new Error("Could not encode PNG");
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+}
+
 export async function downloadPng(
   svg: SVGSVGElement,
   filename: string,

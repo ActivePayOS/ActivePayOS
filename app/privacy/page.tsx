@@ -18,8 +18,16 @@ const privacySections = [
     text: "ZIP code, rank, years of service, and dependent status may be used to estimate housing allowance and related pay figures. These estimates should always be checked against your Leave and Earnings Statement (LES), DFAS, and official military sources.",
   },
   {
+    title: "Budget Builder runs in your browser",
+    text: "The Budget Builder and its Sankey diagram run entirely on your device. The income and expense numbers you enter there are used to draw the chart locally and are never sent to our servers. If you choose \"Save to this device,\" the budget is stored only in your own browser (local storage) and can be cleared at any time.",
+  },
+  {
+    title: "Image exports are local",
+    text: "Exporting the budget diagram as a PNG or SVG happens in your browser — the image is generated on your device and downloaded directly, with nothing uploaded to us or any third party.",
+  },
+  {
     title: "Spreadsheet exports",
-    text: "If you use an export feature, files are generated from the values you provide at the time of export. These exports are for personal planning and organization.",
+    text: "If you use a spreadsheet/PDF export, the values you provide are sent to ActivePayOS only to generate the file you download; they are not stored or kept after the file is produced.",
   },
   {
     title: "Data storage",

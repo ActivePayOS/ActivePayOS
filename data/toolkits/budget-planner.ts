@@ -30,6 +30,7 @@ export const budgetPlanner: Toolkit = {
       type: "actions",
       title: "ActivePayOS Actions",
       actions: [
+        { label: "Budget Builder", href: "/budget", note: "Build a budget and see it as a Sankey — no Excel needed" },
         { label: "Pay Calculator", href: "/pay", note: "Download the Excel export from here" },
         { label: "Toolkits Home", href: "/toolkits", note: "Pick a life-stage plan" },
       ],
@@ -41,8 +42,8 @@ export const budgetPlanner: Toolkit = {
     },
     {
       type: "text",
-      title: "Coming Next",
-      text: "A dashboard view inside ActivePayOS (so you can budget without Excel) + paycheck split planning.",
+      title: "New: Budget Builder",
+      text: "You can now build a budget right inside ActivePayOS — no Excel needed — and see your income and spending as an exportable Sankey diagram. It runs entirely in your browser. Open the Budget Builder above. Coming next: paycheck split planning.",
     },
   ],
 };

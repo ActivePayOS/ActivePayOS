@@ -641,6 +641,25 @@ export default function PayClient({
             </button>
           </div>
         </div>
+
+        <details className="mt-4 text-xs text-gray-500">
+          <summary className="cursor-pointer font-medium text-gray-700 hover:text-[var(--brand-blue)]">
+            What&apos;s in each export?
+          </summary>
+          <div className="mt-2 space-y-2">
+            <p>
+              <strong>CSV</strong>, <strong>PDF</strong>, and <strong>Text</strong> give a minimalist
+              summary of just your pay numbers (monthly + annual) — handy for importing elsewhere,
+              printing, or filing with your LES. The PDF is a clean, printable summary with your
+              pay-flow chart.
+            </p>
+            <p>
+              <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot; tab that
+              pre-fills your pay and suggests a hybrid plan (Housing about BAH, Food about BAS, Savings
+              target %). You can edit everything.
+            </p>
+          </div>
+        </details>
       </section>
 
       <div className={splitLayout ? "grid gap-6 lg:grid-cols-2 lg:items-start" : "space-y-10"}>
@@ -650,7 +669,7 @@ export default function PayClient({
           Set your year, grade, and time in service.
         </p>
 
-        <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label htmlFor="branch" className="block text-sm font-medium">Branch</label>
               <select
@@ -738,12 +757,13 @@ export default function PayClient({
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Used for the State tax disclaimer; set your state rate under take-home to include it.
-              </p>
             </div>
 
-            <div className="grid gap-3 sm:col-span-2 md:grid-cols-2 lg:col-span-4">
+            <p className="mt-1 text-xs text-gray-500 sm:col-span-2 lg:col-span-5">
+              Used for the State tax disclaimer; set your state rate under take-home to include it.
+            </p>
+
+            <div className="grid gap-3 sm:col-span-2 md:grid-cols-2 lg:col-span-5">
               <div className={!receivesBah ? "opacity-60" : ""}>
                 <label className="block text-sm font-medium">
                   Duty ZIP (for BAH)
@@ -794,21 +814,6 @@ export default function PayClient({
                   With dependents
                 </label>
               </div>
-            </div>
-
-            <div className="rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600 sm:col-span-2 lg:col-span-4">
-              <div className="font-medium text-gray-900">Export options</div>
-              <p className="mt-1">
-                Use the format picker by the Download button. <strong>CSV</strong>, <strong>PDF</strong>, and{" "}
-                <strong>Text</strong> give a minimalist summary of just your pay numbers (monthly + annual) — handy
-                for importing elsewhere, printing, or filing with your LES. The PDF is a clean, printable
-                summary.
-              </p>
-              <p className="mt-2">
-                <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot; tab that pre-fills your
-                pay and suggests a hybrid plan (Housing about BAH, Food about BAS, Savings target %). You can edit
-                everything.
-              </p>
             </div>
           </div>
 

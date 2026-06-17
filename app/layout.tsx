@@ -50,12 +50,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <body className="bg-gray-50 text-gray-900 antialiased">
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var t=localStorage.getItem('apo-theme');var v=(t==='light'||t==='dark'||t==='neon')?t:'dark';document.documentElement.setAttribute('data-theme',v);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();",
+              "(function(){try{var t=localStorage.getItem('apo-theme');var v=(t==='light'||t==='dark'||t==='neon')?t:'light';document.documentElement.setAttribute('data-theme',v);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
           }}
         />
         <div className="mx-auto max-w-6xl px-6">
@@ -65,6 +65,9 @@ export default function RootLayout({
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium">
               <Link href="/" className="hover:text-[var(--brand-blue)]">
                 Pay
+              </Link>
+              <Link href="/budget" className="hover:text-[var(--brand-blue)]">
+                Budget
               </Link>
               <Link href="/housing" className="hover:text-[var(--brand-blue)]">
                 Housing

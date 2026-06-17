@@ -7,7 +7,7 @@
 //   modern   – navy header band, highlighted total, zebra-striped table
 //   compact  – centered card, monthly-focused, minimal footprint
 
-import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage, PDFImage } from "pdf-lib";
 import { PaySummary, formatUsd } from "./summary";
 
 export type PdfLayout = "classic" | "modern" | "compact";
@@ -121,7 +121,7 @@ function drawClassic(page: PDFPage, f: Fonts, s: PaySummary) {
 
 // ----------------------------------------------------------------- modern ---
 
-function drawModern(page: PDFPage, f: Fonts, s: PaySummary) {
+function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
   const M = 50;
   const right = PAGE_W - M;
   const bandH = 120;
@@ -187,6 +187,23 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary) {
   page.drawText(s.total.label, { x: labelX, y: totalY, size: 12, font: f.bold, color: INK });
   rightText(page, formatUsd(s.total.monthly), monthlyRight, totalY, 12, f.bold, INK);
   rightText(page, formatUsd(s.total.annual), annualRight, totalY, 12, f.bold, INK);
+
+  // Optional pay-flow chart, scaled to fit the space above the footer.
+  if (chart && chart.width > 0 && chart.height > 0) {
+    const captionY = totalY - 28;
+    page.drawText("WHERE YOUR PAY GOES", { x: M, y: captionY, size: 8, font: f.bold, color: MUTED });
+    const top = captionY - 10;
+    const minY = 92; // keep clear of the footer at y=78
+    const maxW = right - M;
+    let w = maxW;
+    let h = (chart.height / chart.width) * w;
+    const availH = top - minY;
+    if (h > availH) {
+      h = availH;
+      w = (chart.width / chart.height) * h;
+    }
+    page.drawImage(chart, { x: M + (maxW - w) / 2, y: top - h, width: w, height: h });
+  }
 
   footer(page, f);
 }
@@ -258,7 +275,11 @@ function footer(page: PDFPage, f: Fonts) {
   page.drawText(DISCLAIMER_2, { x: M, y: 53, size: 8, font: f.reg, color: MUTED });
 }
 
-export async function generatePayPdf(summary: PaySummary, layout: PdfLayout): Promise<Uint8Array> {
+export async function generatePayPdf(
+  summary: PaySummary,
+  layout: PdfLayout,
+  chartPng?: Uint8Array
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`ActivePayOS Pay Summary - ${summary.grade} ${summary.year}`);
   doc.setCreator("ActivePayOS");
@@ -270,7 +291,9 @@ export async function generatePayPdf(summary: PaySummary, layout: PdfLayout): Pr
     bold: await doc.embedFont(StandardFonts.HelveticaBold),
   };
 
-  if (layout === "modern") drawModern(page, f, summary);
+  const chart = chartPng && chartPng.length > 0 ? await doc.embedPng(chartPng) : undefined;
+
+  if (layout === "modern") drawModern(page, f, summary, chart);
   else if (layout === "compact") drawCompact(page, f, summary);
   else drawClassic(page, f, summary);
 

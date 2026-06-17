@@ -89,6 +89,23 @@ body {
     background-color: var(--card);
     color: var(--foreground);
   }
+
+}
+
+/* Render <select> fully via CSS (custom chevron) rather than the native
+   control: the native control repaints its own hover state on top of our
+   background-color transition, which reads as a 1px "jitter" as the pointer
+   moves across it. Owning the rendering removes that.
+   Left un-layered so it overrides the padding utilities (e.g. px-3). */
+select.field {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  /* override the px-* padding utility so the value never runs under the chevron */
+  padding-right: 2rem !important;
 }
 
 @layer utilities {

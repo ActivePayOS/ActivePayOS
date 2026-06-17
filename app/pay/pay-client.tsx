@@ -739,7 +739,7 @@ export default function PayClient({
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                Used for state tax context. State withholding is not subtracted from the estimate yet.
+                Used for the State tax disclaimer; set your state rate under take-home to include it.
               </p>
             </div>
 

@@ -7,6 +7,12 @@ import { useThemeColors } from "@/components/sankey/useThemeColors";
 import { buildFlowGraph } from "@/lib/sankey/model";
 import { downloadPng } from "@/lib/sankey/export";
 import {
+  computeTakeHome,
+  SGLI_OPTIONS,
+  type FilingStatus,
+  type TspType,
+} from "@/lib/pay/takehome";
+import {
   getStateTaxContext,
   stateTaxContexts,
   stateTaxReferenceLinks,
@@ -181,12 +187,17 @@ export default function PayClient({
     [stateOfLegalResidence]
   );
 
-  // "Premium export" knobs (hidden for now, but ready)
-  const [tspPct] = useState<number>(0.10);
+  // Budget-export knobs (used by the Excel export payload)
   const [savingsTargetPct] = useState<number>(0.20);
   const [housingTargetPct] = useState<number>(1.0);
   const [foodTargetPct] = useState<number>(1.0);
-  const [stateTaxPct] = useState<number>(0);
+
+  // Take-home estimate inputs
+  const [filingStatus, setFilingStatus] = useState<FilingStatus>("single");
+  const [tspPct, setTspPct] = useState<number>(0.05);
+  const [tspType, setTspType] = useState<TspType>("traditional");
+  const [sgliMonthly, setSgliMonthly] = useState<number>(31);
+  const [stateTaxPct, setStateTaxPct] = useState<number>(0);
 
   const basePay = useMemo(
     () => getBasePayFromData(basepay, year, grade, yos),
@@ -269,7 +280,23 @@ export default function PayClient({
   const [pdfLayout, setPdfLayout] = useState<PdfLayout>("classic");
   const [resultsView, setResultsView] = useState<"summary" | "visuals">("summary");
 
-  // Inflow Sankey for the Visuals tab: pay components → monthly pay → take-home / FICA.
+  // Full take-home estimate (federal + state tax, FICA, TSP, SGLI).
+  const takeHome = useMemo(
+    () =>
+      computeTakeHome({
+        basePayMonthly: basePay,
+        bahMonthly: bah ?? 0,
+        basMonthly: basRate,
+        filingStatus,
+        tspPct,
+        tspType,
+        sgliMonthly,
+        stateTaxRatePct: stateTaxPct,
+      }),
+    [basePay, bah, basRate, filingStatus, tspPct, tspType, sgliMonthly, stateTaxPct]
+  );
+
+  // Inflow Sankey for the Visuals tab: pay components → monthly pay → take-home + deductions.
   const sankeyColors = useThemeColors();
   const paySvgRef = useRef<SVGSVGElement>(null);
   const payFlow = useMemo(
@@ -281,17 +308,16 @@ export default function PayClient({
           { id: "bas", label: "BAS", value: basRate, color: "#f59e0b" },
         ],
         [
-          {
-            id: "takehome",
-            label: "Take-home (pre-withholding)",
-            value: estimatedTakeHomeBeforeWithholding,
-            color: "#22c55e",
-          },
-          { id: "fica", label: "Est. FICA", value: estimatedFicaTotal, color: "#ef4444" },
+          { id: "takehome", label: "Take-home", value: takeHome.takeHomeMonthly, color: "#22c55e" },
+          { id: "fed", label: "Federal tax", value: takeHome.federalTaxMonthly, color: "#ef4444" },
+          { id: "state", label: "State tax", value: takeHome.stateTaxMonthly, color: "#f97316" },
+          { id: "fica", label: "FICA", value: takeHome.ficaMonthly, color: "#eab308" },
+          { id: "tsp", label: "TSP", value: takeHome.tspMonthly, color: "#8b5cf6" },
+          { id: "sgli", label: "SGLI", value: takeHome.sgliMonthly, color: "#06b6d4" },
         ],
         { poolColor: sankeyColors.muted, poolLabel: "Monthly Pay" }
       ),
-    [basePay, bah, basRate, estimatedTakeHomeBeforeWithholding, estimatedFicaTotal, sankeyColors.muted]
+    [basePay, bah, basRate, takeHome, sankeyColors.muted]
   );
 
   function exportPaySankey() {
@@ -590,6 +616,116 @@ export default function PayClient({
               </p>
             </div>
           </div>
+
+          <div className="mt-8 border-t pt-6">
+            <h2 className="text-lg font-semibold">Estimate your take-home (optional)</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Adds federal &amp; state tax, FICA, TSP, and SGLI to estimate what actually lands in
+              your bank account.
+            </p>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label htmlFor="filing-status" className="block text-sm font-medium">
+                  Tax filing status
+                </label>
+                <select
+                  id="filing-status"
+                  className="field mt-1 w-full rounded-xl px-3 py-2"
+                  value={filingStatus}
+                  onChange={(e) => setFilingStatus(e.target.value as FilingStatus)}
+                >
+                  <option value="single">Single</option>
+                  <option value="married">Married filing jointly</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="tsp-pct" className="block text-sm font-medium">
+                  TSP contribution
+                </label>
+                <div className="field mt-1 flex items-center rounded-xl px-3 py-2">
+                  <input
+                    id="tsp-pct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round(tspPct * 100)}
+                    onChange={(e) =>
+                      setTspPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100)
+                    }
+                    className="w-full bg-transparent outline-none"
+                  />
+                  <span className="text-sm text-gray-500">% of base</span>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="tsp-type" className="block text-sm font-medium">
+                  TSP type
+                </label>
+                <select
+                  id="tsp-type"
+                  className="field mt-1 w-full rounded-xl px-3 py-2"
+                  value={tspType}
+                  onChange={(e) => setTspType(e.target.value as TspType)}
+                >
+                  <option value="traditional">Traditional (pre-tax)</option>
+                  <option value="roth">Roth (post-tax)</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="sgli" className="block text-sm font-medium">
+                  SGLI coverage
+                </label>
+                <select
+                  id="sgli"
+                  className="field mt-1 w-full rounded-xl px-3 py-2"
+                  value={sgliMonthly}
+                  onChange={(e) => setSgliMonthly(Number(e.target.value))}
+                >
+                  {SGLI_OPTIONS.map((o) => (
+                    <option key={o.coverage} value={o.monthly}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="state-tax-pct" className="block text-sm font-medium">
+                  Estimated state tax rate
+                </label>
+                <div className="field mt-1 flex items-center rounded-xl px-3 py-2">
+                  <input
+                    id="state-tax-pct"
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    value={Math.round(stateTaxPct * 1000) / 10}
+                    onChange={(e) =>
+                      setStateTaxPct(Math.max(0, Math.min(20, Number(e.target.value) || 0)) / 100)
+                    }
+                    className="w-full bg-transparent outline-none"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {stateTaxContext?.category === "no_broad_wage_income_tax"
+                    ? `${stateTaxContext.state} has no broad income tax — 0% is typical.`
+                    : stateOfLegalResidence
+                    ? "Rough effective rate on military wages (see State Tax Context below)."
+                    : "Pick your state of legal residence above for guidance."}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Federal tax assumes the {year} standard deduction and no other income or credits; state
+              tax uses the flat rate you enter. Estimates only — your LES is the source of truth.
+            </p>
+          </div>
         </section>
 
         <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
@@ -672,8 +808,8 @@ export default function PayClient({
                   />
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
-                  Base Pay, BAH, and BAS flow into your monthly pay; estimated FICA (Social Security
-                  + Medicare) is split out from take-home. Estimates only — verify with your LES.
+                  Your pay components flow into your monthly pay, then out to federal &amp; state tax,
+                  FICA, TSP, SGLI, and take-home. Estimates only — verify with your LES.
                 </p>
               </div>
 
@@ -778,22 +914,53 @@ export default function PayClient({
             </div>
 
             <div className="rounded-2xl border p-4">
-              <div className="text-sm font-medium">Estimated FICA Tax</div>
-              <div className="mt-1 text-xs text-gray-500">Social Security (6.2%) + Medicare (1.45%) on base pay.</div>
-              <div className="mt-3 text-2xl font-bold">{fmtUSD(estimatedFicaTotal)}</div>
+              <div className="text-sm font-medium">Total Monthly Deductions</div>
+              <div className="mt-1 text-xs text-gray-500">Federal + state tax, FICA, TSP, and SGLI.</div>
+              <div className="mt-3 text-2xl font-bold">{fmtUSD(takeHome.totalDeductionsMonthly)}</div>
               <div className="mt-1 text-xs text-gray-500">
-                SS: {fmtUSD(estimatedSocialSecurity)} - Medicare: {fmtUSD(estimatedMedicare)}
+                Effective tax rate ~{(takeHome.effectiveTaxRate * 100).toFixed(1)}% (tax + FICA ÷ gross)
               </div>
             </div>
 
-            <div className="rounded-2xl border p-4">
-              <div className="text-sm font-medium">Income After FICA</div>
+            <div className="rounded-2xl border-2 border-emerald-500/60 p-4">
+              <div className="text-sm font-medium">Estimated Monthly Take-Home</div>
               <div className="mt-1 text-xs text-gray-500">
-                Before federal/state withholding, TSP, SGLI, and other deductions.
+                After federal &amp; state tax, FICA, TSP, and SGLI.
               </div>
-              <div className="mt-3 text-2xl font-bold">{fmtUSD(estimatedTakeHomeBeforeWithholding)}</div>
+              <div className="mt-3 text-2xl font-bold">{fmtUSD(takeHome.takeHomeMonthly)}</div>
               <div className="mt-1 text-xs text-gray-500">
-                Annual {fmtUSD0(annual.takeHomeBeforeWithholding)}
+                Annual {fmtUSD0(takeHome.takeHomeMonthly * 12)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Monthly take-home breakdown</div>
+              <div className="text-xs text-gray-500">Gross {fmtUSD(takeHome.grossMonthly)}</div>
+            </div>
+            <div className="mt-4 space-y-2 text-sm">
+              {[
+                { label: "Federal income tax (est.)", value: takeHome.federalTaxMonthly, color: "#ef4444" },
+                { label: "State income tax (est.)", value: takeHome.stateTaxMonthly, color: "#f97316" },
+                { label: "FICA (Social Security + Medicare)", value: takeHome.ficaMonthly, color: "#eab308" },
+                { label: `TSP (${Math.round(tspPct * 100)}% ${tspType})`, value: takeHome.tspMonthly, color: "#8b5cf6" },
+                { label: "SGLI", value: takeHome.sgliMonthly, color: "#06b6d4" },
+              ].map((d) => (
+                <div key={d.label} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-gray-600">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                    {d.label}
+                  </span>
+                  <span className="font-medium">− {fmtUSD(d.value)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t pt-2">
+                <span className="flex items-center gap-2 font-medium">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  Take-home
+                </span>
+                <span className="font-bold">{fmtUSD(takeHome.takeHomeMonthly)}</span>
               </div>
             </div>
           </div>
@@ -801,11 +968,51 @@ export default function PayClient({
           <div className="mt-6 rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
             <div className="font-medium text-gray-900">Important note</div>
             <p className="mt-1">
-              This view shows a cleaner split between taxable and non-taxable military pay.
-              Base pay is taxable. BAH and BAS are generally non-taxable. Actual take-home pay
-              depends on federal withholding, state of legal residence, TSP contributions, SGLI,
-              and any special pays or deductions on your LES.
+              Take-home is an estimate. Federal tax assumes the standard deduction (using the filing
+              status above) and no other income or credits; state tax uses the flat rate you entered;
+              traditional TSP is treated as pre-tax. Your actual LES will differ based on your W-4,
+              special pays, and other deductions.
             </p>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {parts.p.map((x) => {
+              const denom = parts.sum > 0 ? parts.sum : 0;
+              const v = x.value ?? 0;
+              const pct = denom > 0 ? (v / denom) * 100 : 0;
+
+              return (
+                <div key={x.label} className="rounded-2xl border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-medium">
+                        {x.label}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {x.hint}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold">
+                        {fmtUSD(x.value ?? 0)}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {parts.sum > 0 ? `${pct.toFixed(0)}%` : "-"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="h-full bg-black/70"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, pct))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-6 rounded-2xl border bg-white p-5">
@@ -869,46 +1076,6 @@ export default function PayClient({
                 Your LES should show the state you are claiming for tax withholding.
               </p>
             )}
-          </div>
-
-          <div className="mt-6 space-y-4">
-            {parts.p.map((x) => {
-              const denom = parts.sum > 0 ? parts.sum : 0;
-              const v = x.value ?? 0;
-              const pct = denom > 0 ? (v / denom) * 100 : 0;
-
-              return (
-                <div key={x.label} className="rounded-2xl border p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-medium">
-                        {x.label}
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        {x.hint}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold">
-                        {fmtUSD(x.value ?? 0)}
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        {parts.sum > 0 ? `${pct.toFixed(0)}%` : "-"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200">
-                    <div
-                      className="h-full bg-black/70"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, pct))}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
           </div>
             </>
           )}

@@ -3,7 +3,7 @@ import PromotionTimelineClient from "./promotion-timeline-client";
 import basepay2026 from "@/data/basepay/2026.json";
 
 export const metadata: Metadata = {
-  title: "Promotion & Milestone Timeline | ActivePayOS",
+  title: "Promotion & Milestone Timeline",
   description:
     "Project your military promotions and key milestones (GI Bill, ETS, retirement) over time from your contract details, with pay at each step.",
 };

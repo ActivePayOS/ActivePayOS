@@ -668,7 +668,7 @@ export default function PayClient({
           Set your year, grade, and time in service.
         </p>
 
-        <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-6 grid gap-4">
             <div>
               <label htmlFor="branch" className="block text-sm font-medium">Branch</label>
               <select
@@ -758,11 +758,11 @@ export default function PayClient({
               </select>
             </div>
 
-            <p className="mt-1 text-xs text-gray-500 sm:col-span-2 lg:col-span-5">
+            <p className="mt-1 text-xs text-gray-500">
               Used for the State tax disclaimer; set your state rate under take-home to include it.
             </p>
 
-            <div className="grid gap-3 sm:col-span-2 md:grid-cols-2 lg:col-span-5">
+            <div className="grid gap-3">
               <div className={!receivesBah ? "opacity-60" : ""}>
                 <label className="block text-sm font-medium">
                   Duty ZIP (for BAH)
@@ -786,7 +786,7 @@ export default function PayClient({
                 )}
               </div>
 
-              <div className="mt-6 space-y-3 text-sm">
+              <div className="space-y-3 text-sm">
                 <label className="flex items-start gap-2">
                   <input
                     type="checkbox"
@@ -822,7 +822,7 @@ export default function PayClient({
               Adds federal &amp; state tax, FICA, TSP, and SGLI to estimate what actually lands in
               your bank account.
             </p>
-            <div className="mt-6 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-6 grid gap-4">
               <div>
                 <label htmlFor="filing-status" className="block text-sm font-medium">
                   Tax filing status

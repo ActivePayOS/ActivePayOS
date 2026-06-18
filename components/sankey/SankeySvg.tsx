@@ -18,6 +18,10 @@ const MT = 46; // top margin (captions + pool label)
 const MB = 34; // bottom margin (watermark)
 const NODE_W = 18;
 const PAD = 14; // vertical gap between stacked nodes
+// Each side label is two stacked lines (name over $ amount). This is the minimum
+// center-to-center spacing they need so adjacent labels never collide; thin nodes
+// can sit closer than this, so labels are nudged apart and tethered with a leader.
+const LABEL_MIN_GAP = 30;
 
 const COL_X: Record<0 | 1 | 2, number> = {
   0: ML,
@@ -118,6 +122,42 @@ function layout(graph: SankeyGraph) {
   return { positioned, ribbons };
 }
 
+// Spread label anchor points so no two collide, while keeping them as close to
+// their node centers as possible. A forward pass enforces the minimum gap; if the
+// stack overflows the bottom we slide it up and re-settle from the bottom edge.
+function deOverlapLabels(
+  nodes: Positioned[],
+  top: number,
+  bottom: number,
+  minGap: number
+): Map<string, number> {
+  const sorted = [...nodes].sort((a, b) => a.cy - b.cy);
+  const ys = sorted.map((n) => n.cy);
+
+  for (let i = 1; i < ys.length; i++) {
+    if (ys[i] < ys[i - 1] + minGap) ys[i] = ys[i - 1] + minGap;
+  }
+
+  const overflow = ys.length ? ys[ys.length - 1] - bottom : 0;
+  if (overflow > 0) {
+    for (let i = ys.length - 1; i >= 0; i--) {
+      const ceiling = i === ys.length - 1 ? bottom : ys[i + 1] - minGap;
+      if (ys[i] > ceiling) ys[i] = ceiling;
+    }
+  }
+
+  if (ys.length && ys[0] < top) {
+    let shift = top - ys[0];
+    for (let i = 0; i < ys.length && shift > 0; i++) {
+      ys[i] += shift;
+      const next = i + 1 < ys.length ? ys[i + 1] : Infinity;
+      shift = ys[i] + minGap > next ? ys[i] + minGap - next : 0;
+    }
+  }
+
+  return new Map(sorted.map((n, i) => [n.id, ys[i]]));
+}
+
 export default function SankeySvg({
   graph,
   colors,
@@ -146,6 +186,23 @@ export default function SankeySvg({
   }
 
   const { positioned, ribbons } = computed;
+
+  // Side-label anchors, de-collided independently per side so the name/$ pairs
+  // never overlap each other (thin nodes would otherwise stack their labels).
+  const labelTop = MT + 12;
+  const labelBottom = H - MB - 6;
+  const leftLabelY = deOverlapLabels(
+    positioned.filter((n) => n.column === 0),
+    labelTop,
+    labelBottom,
+    LABEL_MIN_GAP
+  );
+  const rightLabelY = deOverlapLabels(
+    positioned.filter((n) => n.column === 2),
+    labelTop,
+    labelBottom,
+    LABEL_MIN_GAP
+  );
 
   return (
     <svg
@@ -226,12 +283,24 @@ export default function SankeySvg({
           const left = n.column === 0;
           const tx = left ? n.x - 8 : n.x + NODE_W + 8;
           const anchor = left ? "end" : "start";
+          const labelCy = (left ? leftLabelY : rightLabelY).get(n.id) ?? n.cy;
+          const edgeX = left ? n.x : n.x + NODE_W;
+          const leadX = left ? n.x - 6 : n.x + NODE_W + 6;
+          const displaced = Math.abs(labelCy - n.cy) > 1.5;
           return (
             <g key={`lbl-${n.id}`}>
-              <text x={tx} y={n.cy - 3} textAnchor={anchor} fontSize={12.5} fontWeight={600} fill={colors.foreground}>
+              {displaced && (
+                <path
+                  d={`M${edgeX},${n.cy} L${leadX},${labelCy}`}
+                  stroke={colors.line}
+                  strokeWidth={1}
+                  fill="none"
+                />
+              )}
+              <text x={tx} y={labelCy - 3} textAnchor={anchor} fontSize={12.5} fontWeight={600} fill={colors.foreground}>
                 {n.label}
               </text>
-              <text x={tx} y={n.cy + 12} textAnchor={anchor} fontSize={11} fill={colors.muted}>
+              <text x={tx} y={labelCy + 12} textAnchor={anchor} fontSize={11} fill={colors.muted}>
                 {fmtUSD0(n.value)}
               </text>
             </g>

@@ -663,6 +663,11 @@ export default function PayClient({
 
       <div className={splitLayout ? "grid gap-6 lg:grid-cols-2 lg:items-start" : "space-y-10"}>
         <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
+          {/* In the full-width stacked layout the narrow inputs free up room to
+              place the take-home estimate alongside them; in side-by-side mode
+              the inputs section is already narrow, so they stack as before. */}
+          <div className={!splitLayout ? "lg:grid lg:grid-cols-2 lg:items-start lg:gap-8" : ""}>
+          <div>
           <h2 className="text-lg font-semibold">Inputs (Start Here!)</h2>
         <p className="mt-1 text-sm text-gray-600">
           Set your year, grade, and time in service.
@@ -815,8 +820,13 @@ export default function PayClient({
               </div>
             </div>
           </div>
+          </div>
 
-          <div className="mt-8 border-t pt-6">
+          <div
+            className={`mt-8 border-t pt-6 ${
+              !splitLayout ? "lg:mt-0 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8" : ""
+            }`}
+          >
             <h2 className="text-lg font-semibold">Estimate your take-home (optional)</h2>
             <p className="mt-1 text-sm text-gray-600">
               Adds federal &amp; state tax, FICA, TSP, and SGLI to estimate what actually lands in
@@ -924,6 +934,7 @@ export default function PayClient({
               Federal tax assumes the {year} standard deduction and no other income or credits; state
               tax uses the flat rate you enter. Estimates only — your LES is the source of truth.
             </p>
+          </div>
           </div>
 
           <div className="mt-8 border-t pt-6">

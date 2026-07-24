@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------------
+   Theming
+   Utility classes (bg-white, bg-gray-50, text-gray-900, border, ...) are
+   remapped onto CSS variables, so switching a theme is just swapping values.
+   Two themes select via [data-theme] on <html>: "light" and "dark". Default =
+   light (set on <html> by the server and the no-flash inline script in
+   layout.tsx).
+---------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+  --background: #f7f9fc;
+  --foreground: #07183b;
+  --brand-blue: #0b5cff;
+  --brand-blue-dark: #074bd3;
+  --brand-ink: #07183b;
+  --brand-surface: #ffffff;
+  --card: #ffffff;
+  --card-muted: #f1f5f9;
+  --line: #d8e0ec;
+  --muted: #526176;
+
+  /* Form controls — a distinct "third" surface so dropdowns / file pickers /
+     inputs read clearly against the cards and the page background. */
+  --field-bg: #eef1ff;
+  --field-bg-hover: #e2e7ff;
+  --field-text: #1e2a52;
+  --field-border: #c3cdf7;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand-blue) 22%, transparent);
+}
+
+@layer base {
+  a,
+  button,
+  input,
+  select {
+    transition-duration: 150ms;
+    transition-property: background-color, border-color, color, box-shadow, opacity;
+  }
+
+  input,
+  select,
+  textarea {
+    color: var(--foreground);
+  }
+}
+
+@layer components {
+  /* The "third color" surface for selects, the file-type picker, and inputs. */
+  .field {
+    background-color: var(--field-bg);
+    color: var(--field-text);
+    border: 1px solid var(--field-border);
+  }
+
+  .field:hover {
+    background-color: var(--field-bg-hover);
+  }
+
+  .field::placeholder {
+    color: color-mix(in srgb, var(--field-text) 55%, transparent);
+  }
+
+  /* Keep the native option list legible on the dark themes. */
+  .field option {
+    background-color: var(--card);
+    color: var(--foreground);
+  }
+
+}
+
+/* Render <select> fully via CSS (custom chevron) rather than the native
+   control: the native control repaints its own hover state on top of our
+   background-color transition, which reads as a 1px "jitter" as the pointer
+   moves across it. Owning the rendering removes that.
+   Left un-layered so it overrides the padding utilities (e.g. px-3). */
+select.field {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  /* override the px-* padding utility so the value never runs under the chevron */
+  padding-right: 2rem !important;
+}
+
+@layer utilities {
+  .bg-gray-50 {
+    background-color: var(--background);
+  }
+
+  .bg-white {
+    background-color: var(--card);
+  }
+
+  .bg-gray-100,
+  .bg-gray-200 {
+    background-color: var(--card-muted);
+  }
+
+  .text-gray-900 {
+    color: var(--foreground);
+  }
+
+  .text-gray-700 {
+    color: color-mix(in srgb, var(--foreground) 78%, var(--muted));
+  }
+
+  .text-gray-600,
+  .text-gray-500 {
+    color: var(--muted);
+  }
+
+  .border,
+  .border-t,
+  .border-b,
+  .border-l {
+    border-color: var(--line);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Classic Dark (default) — the original blue-tinted dark theme.
+---------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #050914;
+  --foreground: #f7fbff;
+  --brand-blue: #3b82ff;
+  --brand-blue-dark: #1d6cff;
+  --brand-ink: #f7fbff;
+  --brand-surface: #050914;
+  --card: #0c1424;
+  --card-muted: #111d31;
+  --line: #263852;
+  --muted: #b7c4d6;
+
+  --field-bg: #142036;
+  --field-bg-hover: #1a2942;
+  --field-text: #d8e6ff;
+  --field-border: #34507c;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 255, 0.16), transparent 28rem),
+    var(--background);
+}
+
+/* ----------------------------------------------------------------------------
+   Dark-mode structural overrides.
+---------------------------------------------------------------------------- */
+[data-theme="dark"] .shadow-sm,
+[data-theme="dark"] .shadow-md {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .text-gray-400 {
+  color: #7e90ad;
+}
+
+[data-theme="dark"] .bg-black {
+  background-color: var(--brand-blue);
+}
+
+[data-theme="dark"] .border-black {
+  border-color: var(--brand-blue);
+}
+
+/* Progress/bar fills that use translucent black would vanish on dark. */
+[data-theme="dark"] .bg-black\/70 {
+  background-color: color-mix(in srgb, var(--brand-blue) 80%, transparent);
+}
+
+[data-theme="dark"] .hover\:bg-gray-50:hover,
+[data-theme="dark"] .hover\:bg-gray-100:hover,
+[data-theme="dark"] .hover\:bg-gray-800:hover {
+  background-color: color-mix(in srgb, var(--brand-blue) 18%, var(--card));
+}
+
+[data-theme="dark"] .hover\:text-gray-700:hover,
+[data-theme="dark"] .hover\:text-gray-900:hover,
+[data-theme="dark"] .hover\:text-black:hover {
+  color: var(--brand-blue);
+}
+
+[data-theme="dark"] .focus\:ring-black\/20:focus {
+  --tw-ring-color: color-mix(in srgb, var(--brand-blue) 45%, transparent);
+}

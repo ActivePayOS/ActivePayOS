@@ -1,0 +1,52 @@
+{
+  "name": "activepayos",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "ActivePayOS contributors",
+  "contributors": [
+    "Simon Gott",
+    "Nick Parker"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ActivePayOS/ActivePayOS.git"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "update:basepay": "node scripts/update_basepay_2026.mjs",
+    "update:bas": "node scripts/update_bas.mjs",
+    "validate:basepay": "node scripts/validate_basepay_2026.mjs",
+    "audit:pay-data": "node scripts/audit-pay-data.mjs",
+    "bah:zipmha": "node scripts/normalize_zipmha_2026.mjs",
+    "bah:verify": "node scripts/verify_bah_2026.mjs",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-smoke-tests.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "exceljs": "^4.4.0",
+    "next": "^16.2.9",
+    "pdf-lib": "^1.17.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "uuid": "11.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "playwright": "^1.58.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

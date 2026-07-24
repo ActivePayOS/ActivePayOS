@@ -1,0 +1,46 @@
+ActivePayOS
+Copyright (C) 2026 Simon Gott, Nick Parker, and ActivePayOS contributors.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version (AGPL-3.0-or-later). See the LICENSE file for the full text.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+--------------------------------------------------------------------------------
+Government reference data (public domain)
+--------------------------------------------------------------------------------
+
+The U.S. Government reference data under data/ -- including DFAS base-pay tables,
+BAS rates, DTMO/MHA BAH tables, and ZIP-to-MHA mappings -- are works of the U.S.
+Government and are in the public domain (17 U.S.C. Sec. 105). No one owns these
+numbers.
+
+ActivePayOS's original work -- the curation, normalization, validation scripts,
+schemas, application code, design, and written copy -- is licensed under
+AGPL-3.0-or-later as described above.
+
+--------------------------------------------------------------------------------
+Brand
+--------------------------------------------------------------------------------
+
+The name "ActivePayOS," the logo, and the activepayos.com domain are not covered
+by the code license. A fork or derivative must use its own name and branding.
+
+--------------------------------------------------------------------------------
+Not affiliated with the U.S. Government
+--------------------------------------------------------------------------------
+
+ActivePayOS is an independent, educational planning tool. It is not affiliated
+with, endorsed by, or connected to the U.S. Department of War (formerly the
+Department of Defense), DFAS, the VA, or any branch of the U.S. military.
+
+ActivePayOS is a personal project of its maintainers and contributors, created
+and maintained in their personal capacities only. Nothing in this project is
+produced in anyone's official capacity or represents the views of any
+government entity or employer.
+
+Figures are estimates; verify with your LES, myPay, and DFAS.

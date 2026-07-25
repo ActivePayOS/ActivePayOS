@@ -24,6 +24,7 @@ const routes = [
   "/toolkits/promotion-timeline",
   "/toolkits/retirement-tsp",
   "/toolkits/student-loans",
+  "/toolkits/wealth-projector",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

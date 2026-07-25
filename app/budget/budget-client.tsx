@@ -784,9 +784,8 @@ export default function BudgetClient() {
                 <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                TSP contributions are a percent of <strong>base pay only</strong> — not BAH or BAS.
-                Enter the percent and we&apos;ll do the math; it flows through the chart as its own
-                outflow.
+                TSP contributions are a percent of <strong>base pay only</strong>
+                {" — not BAH or BAS. Enter the percent and we'll do the math; it flows through the chart as its own outflow."}
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
@@ -870,6 +869,16 @@ export default function BudgetClient() {
                       )}%) left before you hit the limit.`}
                 </div>
               </div>
+
+              <p className="mt-3 text-xs text-gray-500">
+                Wondering what this grows into over your commitment?{" "}
+                <a
+                  href="/toolkits/wealth-projector"
+                  className="font-medium underline underline-offset-2 hover:text-gray-900"
+                >
+                  Project it year by year →
+                </a>
+              </p>
 
               {/* Fund allocation (collapsible) */}
               <button

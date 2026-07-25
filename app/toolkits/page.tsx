@@ -47,6 +47,11 @@ const tools = [
     desc: "Contribution strategy, Roth vs Traditional, and long-term projections.",
   },
   {
+    href: "/toolkits/wealth-projector",
+    title: "Wealth Projector",
+    desc: "Project TSP, investments, and savings across your service commitment — with the BRS match and real fund performance.",
+  },
+  {
     href: "/toolkits/promotion-timeline",
     title: "Career Milestone Planner",
     desc: "Build an enlisted-first planning scenario for promotions, GI Bill, ETS, retirement, and pay over time.",

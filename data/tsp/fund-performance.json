@@ -1,0 +1,31 @@
+{
+  "asOf": "2025-12-31",
+  "note": "Return assumptions for the Wealth Projector. VERIFY against tsp.gov/fund-performance before annual updates. Long-run figures are index-backfilled compound annual returns since April 1987 (C/S/I funds began later; earlier years use their underlying index). All figures are nominal, before inflation. Past performance does not predict future returns — every figure is editable in the UI.",
+  "sources": [
+    "https://www.tsp.gov/fund-performance/",
+    "https://www.tspdatacenter.com/reports/annual/",
+    "https://www.tspfolio.com/tspfunds"
+  ],
+  "funds": {
+    "G": { "name": "G Fund", "longRunPct": 4.7, "tenYearPct": 2.9, "inception": "1987-04-01" },
+    "F": { "name": "F Fund", "longRunPct": 5.2, "tenYearPct": 1.5, "inception": "1988-01-29" },
+    "C": { "name": "C Fund", "longRunPct": 10.9, "tenYearPct": 14.9, "inception": "1988-01-29" },
+    "S": { "name": "S Fund", "longRunPct": 10.1, "tenYearPct": 11.6, "inception": "2001-05-01" },
+    "I": { "name": "I Fund", "longRunPct": 6.9, "tenYearPct": 10.2, "inception": "2001-05-01" }
+  },
+  "calendarReturnsPct": {
+    "2021": { "G": 1.38, "F": -1.46, "C": 28.68, "S": 12.45, "I": 11.45 },
+    "2022": { "G": 2.98, "F": -12.83, "C": -18.13, "S": -26.26, "I": -13.94 },
+    "2023": { "G": 4.22, "F": 5.58, "C": 26.25, "S": 25.3, "I": 18.38 },
+    "2024": { "G": 4.4, "F": 1.33, "C": 24.96, "S": 16.93, "I": 4.27 },
+    "2025": { "G": 4.44, "F": 7.21, "C": 17.85, "S": 11.38, "I": 32.45 }
+  },
+  "otherAssets": {
+    "sp500LongRunPct": 10.0,
+    "sp500Note": "Approximate long-run compound annual return of the S&P 500 with dividends reinvested (1926-2025), nominal. Editable.",
+    "savingsApyPct": 3.8,
+    "savingsNote": "Typical high-yield savings APY as of early 2026. Rates move with the Fed - use your bank's rate.",
+    "inflationPct": 2.5,
+    "inflationNote": "Long-run planning assumption; the Federal Reserve targets 2%."
+  }
+}

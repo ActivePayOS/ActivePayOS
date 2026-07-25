@@ -10,23 +10,40 @@ import {
   type FundAllocation,
   type TspFundKey,
 } from "@/lib/pay/tsp";
+import { blendedAnnualReturn, brsAgencyPct, yearsToDouble } from "@/lib/projection/wealth";
 import {
-  blendedAnnualReturn,
-  brsAgencyPct,
-  projectWealth,
-  yearsToDouble,
-  type AccountInput,
-} from "@/lib/projection/wealth";
+  projectCareerWealth,
+  upcomingPromotions,
+  type CareerProjectionInput,
+} from "@/lib/projection/career";
 import {
   applyAssignments,
   budgetContributionCandidates,
   type ContributionDestination,
 } from "@/lib/projection/budget-link";
+import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
+import { BRANCH_OPTIONS, type BranchId, type Track } from "@/data/promotion/timing";
+import {
+  ACCOUNT_COLORS,
+  FlowsChart,
+  GrowthChart,
+  PayRankChart,
+  gradeColor,
+} from "@/components/charts/WealthCharts";
 import fundPerformance from "@/data/tsp/fund-performance.json";
 
 const emptySubscribe = () => () => {};
 
 type ReturnPreset = "longRun" | "tenYear" | "custom";
+type HorizonMode = "separation" | "age";
+type ResultTab = "growth" | "pay" | "flows" | "table";
+
+const RESULT_TABS: { value: ResultTab; label: string }[] = [
+  { value: "growth", label: "Growth" },
+  { value: "pay", label: "Pay & Rank" },
+  { value: "flows", label: "In vs. Growth" },
+  { value: "table", label: "Table" },
+];
 
 type FundPerf = {
   asOf: string;
@@ -40,6 +57,9 @@ type FundPerf = {
 };
 const PERF = fundPerformance as unknown as FundPerf;
 const FUND_KEYS = TSP_FUNDS.map((f) => f.key);
+
+const ENLISTED_GRADES = ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9"];
+const OFFICER_GRADES = ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6"];
 
 // One-time read of the saved Budget Builder state (used for prefill and the
 // "Use your budget" contribution assignments). Shape is best-effort — every
@@ -62,27 +82,11 @@ function loadSavedBudgetRaw(): StoredBudget | null {
   }
 }
 
-// Pull starting values from the saved Budget Builder state when it exists, so
-// the projector opens on the user's real numbers without any new data entry.
-function loadBudgetPrefill(): {
-  basePay?: number;
-  tspPct?: number;
-  fundAlloc?: FundAllocation;
-} {
+function loadBudgetPrefill(): { tspPct?: number; fundAlloc?: FundAllocation } {
   try {
     const parsed = loadSavedBudgetRaw();
     if (!parsed) return {};
-    const income: Array<{ id?: string; label?: string; amount?: number }> = Array.isArray(
-      parsed?.income
-    )
-      ? parsed.income
-      : [];
-    const baseRow =
-      income.find((i) => i.id === parsed?.tspBaseId) ??
-      income.find((i) => /base/i.test(i.label ?? ""));
     return {
-      basePay:
-        typeof baseRow?.amount === "number" && baseRow.amount > 0 ? baseRow.amount : undefined,
       tspPct: typeof parsed?.tspPct === "number" && parsed.tspPct > 0 ? parsed.tspPct : undefined,
       fundAlloc:
         parsed?.fundAlloc && typeof parsed.fundAlloc === "object" ? parsed.fundAlloc : undefined,
@@ -92,23 +96,27 @@ function loadBudgetPrefill(): {
   }
 }
 
-const CHART_COLORS: Record<string, string> = {
-  tsp: "#3b82f6",
-  invest: "#22c55e",
-  savings: "#f59e0b",
-};
-
-export default function WealthProjectorClient() {
+export default function WealthProjectorClient({ basepay }: { basepay: BasePayDataset }) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
-  // ---- Horizon ----
-  const [years, setYears] = useState(5);
+  // ---- Career ----
+  const [branch, setBranch] = useState<BranchId>("army");
+  const [track, setTrack] = useState<Track>("enlisted");
+  const [grade, setGrade] = useState("E-4");
+  const [yosNow, setYosNow] = useState(4);
+  const [modelPromotions, setModelPromotions] = useState(true);
+  const [payRaisePct, setPayRaisePct] = useState(2.0);
+
+  // ---- Service window & projection horizon (independent) ----
+  const [currentAge, setCurrentAge] = useState(22);
+  const [serviceYears, setServiceYears] = useState(5);
+  const [horizonMode, setHorizonMode] = useState<HorizonMode>("age");
+  const [targetAge, setTargetAge] = useState(60);
   const [inflationPct, setInflationPct] = useState(PERF.otherAssets.inflationPct);
 
   // ---- TSP ----
   const [prefill] = useState(loadBudgetPrefill);
   const [tspBalance, setTspBalance] = useState(5000);
-  const [basePay, setBasePay] = useState(() => prefill.basePay ?? 3826);
   const [contribPct, setContribPct] = useState(() => prefill.tspPct ?? 0.05);
   const [brs, setBrs] = useState(true);
   const [alloc, setAlloc] = useState<FundAllocation>(
@@ -129,13 +137,17 @@ export default function WealthProjectorClient() {
   const [showAllRows, setShowAllRows] = useState(false);
   const [budgetNote, setBudgetNote] = useState<string | null>(null);
 
-  // ---- Taxable investments & savings ----
+  // ---- Taxable investments & savings (during and after service) ----
   const [invBalance, setInvBalance] = useState(1000);
   const [invMonthly, setInvMonthly] = useState(100);
+  const [invMonthlyAfter, setInvMonthlyAfter] = useState(100);
   const [invReturnPct, setInvReturnPct] = useState(PERF.otherAssets.sp500LongRunPct);
   const [savBalance, setSavBalance] = useState(2000);
   const [savMonthly, setSavMonthly] = useState(150);
+  const [savMonthlyAfter, setSavMonthlyAfter] = useState(150);
   const [savApyPct, setSavApyPct] = useState(PERF.otherAssets.savingsApyPct);
+
+  const [tab, setTab] = useState<ResultTab>("growth");
 
   // ---- Derived ----
   const fundReturns = useMemo(() => {
@@ -153,69 +165,115 @@ export default function WealthProjectorClient() {
 
   const tspReturn = blendedAnnualReturn(alloc, fundReturns);
 
-  const employeeUncapped = Math.max(0, basePay) * Math.max(0, contribPct);
-  const employeeMonthly = Math.min(employeeUncapped, TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12);
-  const tspCapped = employeeUncapped > employeeMonthly + 0.005;
-  const agencyMonthly = brs ? Math.max(0, basePay) * brsAgencyPct(Math.max(0, contribPct)) : 0;
+  const projectionYears =
+    horizonMode === "separation"
+      ? Math.max(1, serviceYears)
+      : Math.max(Math.max(1, serviceYears), Math.min(70, targetAge - currentAge));
 
-  const accounts: AccountInput[] = useMemo(
-    () => [
-      {
-        key: "tsp",
-        label: "TSP",
-        startBalance: tspBalance,
-        monthlyContribution: employeeMonthly + agencyMonthly,
-        annualReturn: tspReturn,
-      },
-      {
-        key: "invest",
-        label: "Investments",
-        startBalance: invBalance,
-        monthlyContribution: invMonthly,
-        annualReturn: invReturnPct / 100,
-      },
-      {
-        key: "savings",
-        label: "Savings",
-        startBalance: savBalance,
-        monthlyContribution: savMonthly,
-        annualReturn: savApyPct / 100,
-      },
-    ],
-    [
+  const careerInput: CareerProjectionInput = useMemo(
+    () => ({
+      basepay,
+      branch,
+      track,
+      currentGrade: grade,
+      currentYosYears: Math.max(0, yosNow),
+      serviceYearsRemaining: serviceYears,
+      modelPromotions,
+      annualPayRaise: Math.max(0, payRaisePct) / 100,
+      projectionYears,
+      currentAge,
       tspBalance,
-      employeeMonthly,
-      agencyMonthly,
+      tspPct: contribPct,
+      brs,
       tspReturn,
       invBalance,
       invMonthly,
+      invMonthlyAfter,
+      invReturn: invReturnPct / 100,
+      savBalance,
+      savMonthly,
+      savMonthlyAfter,
+      savReturn: savApyPct / 100,
+      inflation: Math.max(0, inflationPct) / 100,
+    }),
+    [
+      basepay,
+      branch,
+      track,
+      grade,
+      yosNow,
+      serviceYears,
+      modelPromotions,
+      payRaisePct,
+      projectionYears,
+      currentAge,
+      tspBalance,
+      contribPct,
+      brs,
+      tspReturn,
+      invBalance,
+      invMonthly,
+      invMonthlyAfter,
       invReturnPct,
       savBalance,
       savMonthly,
+      savMonthlyAfter,
       savApyPct,
+      inflationPct,
     ]
   );
 
-  const inflation = Math.max(0, inflationPct) / 100;
-  const projection = useMemo(
-    () => projectWealth(accounts, years, inflation),
-    [accounts, years, inflation]
-  );
-  // "What if I stayed 3 more years" — the stay-in/get-out trade space in one number.
-  const extended = useMemo(
-    () => projectWealth(accounts, years + 3, inflation),
-    [accounts, years, inflation]
-  );
+  const projection = useMemo(() => projectCareerWealth(careerInput), [careerInput]);
+
+  // Stay-3-more-years comparison at the same end age, for the trade space.
+  const stayLonger = useMemo(() => {
+    const cmpYears = Math.max(projectionYears, serviceYears + 3);
+    return {
+      base: projectCareerWealth({ ...careerInput, projectionYears: cmpYears }),
+      extended: projectCareerWealth({
+        ...careerInput,
+        serviceYearsRemaining: serviceYears + 3,
+        projectionYears: cmpYears,
+      }),
+    };
+  }, [careerInput, projectionYears, serviceYears]);
 
   const startYear = new Date().getFullYear();
-  const endYear = startYear + years;
-  const agencyTotal = agencyMonthly * 12 * years;
-  const doubling = yearsToDouble(tspReturn);
-  const startTotal = accounts.reduce((s, a) => s + Math.max(0, a.startBalance), 0);
-  const allocTotal = FUND_KEYS.reduce((a, k) => a + (alloc[k] || 0), 0);
+  const endYear = startYear + projectionYears;
+  const sepYear = startYear + serviceYears;
+  const promotionsPreview = useMemo(
+    () =>
+      modelPromotions
+        ? upcomingPromotions(branch, track, grade, Math.max(0, yosNow), serviceYears)
+        : [],
+    [modelPromotions, branch, track, grade, yosNow, serviceYears]
+  );
 
-  const pctInput =
-    "field w-16 rounded-lg px-2 py-1 text-right text-sm outline-none";
+  const basePayNow = basePayFor(basepay, grade, Math.max(0, yosNow));
+  const employeeNow = Math.min(
+    (basePayNow ?? 0) * contribPct,
+    TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
+  );
+  const agencyNow = brs ? (basePayNow ?? 0) * brsAgencyPct(contribPct) : 0;
+
+  // "What did my military time get me": TSP at separation, compounding alone.
+  const militaryTspAtEnd = useMemo(() => {
+    const sep = projection.atSeparation;
+    if (!sep) return null;
+    const yearsAfter = projectionYears - sep.yearIndex;
+    if (yearsAfter <= 0) return null;
+    return sep.balances.tsp * Math.pow(1 + tspReturn, yearsAfter);
+  }, [projection.atSeparation, projectionYears, tspReturn]);
+
+  const doubling = yearsToDouble(tspReturn);
+  const allocTotal = FUND_KEYS.reduce((a, k) => a + (alloc[k] || 0), 0);
+  const startBalances = {
+    tsp: Math.max(0, tspBalance),
+    invest: Math.max(0, invBalance),
+    savings: Math.max(0, savBalance),
+  };
+
+  const pctInput = "field w-16 rounded-lg px-2 py-1 text-right text-sm outline-none";
 
   function num(v: string, fallback = 0) {
     const n = Number(v);
@@ -233,9 +291,9 @@ export default function WealthProjectorClient() {
     setSavMonthly(assignedTotals.savingsMonthly);
     setInvMonthly(assignedTotals.investMonthly);
     setBudgetNote(
-      `Applied — savings now ${fmtUSD0(assignedTotals.savingsMonthly)}/mo and investments ${fmtUSD0(
-        assignedTotals.investMonthly
-      )}/mo. Adjust either below anytime.`
+      `Applied to your in-service pace — savings ${fmtUSD0(
+        assignedTotals.savingsMonthly
+      )}/mo, investments ${fmtUSD0(assignedTotals.investMonthly)}/mo. After-service amounts are set separately below.`
     );
   }
 
@@ -246,8 +304,9 @@ export default function WealthProjectorClient() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Wealth Projector</h1>
             <p className="mt-2 max-w-2xl text-sm text-gray-600">
-              See where your TSP, investments, and savings could be by the end of your service
-              commitment — and what staying in longer is worth. Every assumption is editable.
+              Decide how long you serve and how far you look: typical promotions drive your pay,
+              pay drives your TSP and match, and everything compounds to any age you pick — so you
+              can see exactly what your military years turn into.
             </p>
             <p className="mt-2 max-w-2xl text-xs text-gray-500">
               Educational planning estimate, not investment advice. Markets vary year to year;
@@ -271,36 +330,233 @@ export default function WealthProjectorClient() {
         <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
           {/* ------------------------------ Inputs ------------------------------ */}
           <section className="space-y-6">
+            {/* Service window & horizon */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold">Your horizon</h2>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <h2 className="text-lg font-semibold">Service &amp; horizon</h2>
+              <div className="mt-3 space-y-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-gray-600">I am</span>
+                  <input
+                    type="number"
+                    min={17}
+                    max={70}
+                    value={currentAge}
+                    onChange={(e) => setCurrentAge(Math.max(17, Math.min(70, num(e.target.value, 22))))}
+                    className={pctInput}
+                    aria-label="Current age"
+                  />
+                  <span className="text-gray-600">years old, staying in</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    value={serviceYears}
+                    onChange={(e) => setServiceYears(Math.max(0, Math.min(30, num(e.target.value, 5))))}
+                    className={pctInput}
+                    aria-label="Years more you'll serve"
+                  />
+                  <span className="text-gray-600">more years{" "}
+                    <span className="text-gray-400">(→ {sepYear}, age {currentAge + serviceYears})</span>
+                  </span>
+                </div>
                 <input
                   type="range"
-                  min={1}
-                  max={30}
-                  value={years}
-                  onChange={(e) => setYears(num(e.target.value, 5))}
-                  className="w-full"
-                  aria-label="Years remaining on your commitment"
-                />
-                <span className="font-medium">
-                  {years} year{years === 1 ? "" : "s"} left
-                </span>
-                <span className="text-gray-500">→ projected through {endYear}</span>
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-xs text-gray-600">
-                <span>Inflation assumption</span>
-                <input
-                  type="number"
                   min={0}
-                  max={10}
-                  step={0.1}
-                  value={inflationPct}
-                  onChange={(e) => setInflationPct(Math.max(0, Math.min(10, num(e.target.value))))}
-                  className={pctInput}
-                  aria-label="Inflation percent per year"
+                  max={30}
+                  value={serviceYears}
+                  onChange={(e) => setServiceYears(num(e.target.value, 5))}
+                  className="w-full"
+                  aria-label="Years more you'll serve (slider)"
                 />
-                <span>%/yr (for today&apos;s-dollar figures)</span>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-gray-600">Project until</span>
+                  <span className="inline-flex items-center rounded-full border p-1 text-xs" role="group">
+                    <button
+                      type="button"
+                      onClick={() => setHorizonMode("separation")}
+                      className={`rounded-full px-3 py-1 font-medium transition ${
+                        horizonMode === "separation"
+                          ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                          : "text-gray-600 hover:text-gray-900"
+                      }`}
+                    >
+                      Separation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHorizonMode("age")}
+                      className={`rounded-full px-3 py-1 font-medium transition ${
+                        horizonMode === "age"
+                          ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                          : "text-gray-600 hover:text-gray-900"
+                      }`}
+                    >
+                      An age I pick
+                    </button>
+                  </span>
+                  {horizonMode === "age" && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={currentAge + 1}
+                        max={90}
+                        value={targetAge}
+                        onChange={(e) =>
+                          setTargetAge(Math.max(currentAge + 1, Math.min(90, num(e.target.value, 60))))
+                        }
+                        className={pctInput}
+                        aria-label="Project to this age"
+                      />
+                      <span className="text-xs text-gray-500">(→ {endYear})</span>
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {horizonMode === "age" && projectionYears > serviceYears
+                    ? `Serving ${serviceYears} more year${serviceYears === 1 ? "" : "s"}, then watching it compound ${
+                        projectionYears - serviceYears
+                      } more — through age ${currentAge + projectionYears}.`
+                    : "Projecting through the end of your service window."}
+                </p>
+
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>Inflation assumption</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    value={inflationPct}
+                    onChange={(e) => setInflationPct(Math.max(0, Math.min(10, num(e.target.value))))}
+                    className={pctInput}
+                    aria-label="Inflation percent per year"
+                  />
+                  <span>%/yr (for today&apos;s-dollar figures)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Career path */}
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold">Career path</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Your projected rank sets your base pay from the DFAS tables, and base pay is what
+                the TSP percentage and BRS match are computed from.
+              </p>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value as BranchId)}
+                    className="field rounded-lg px-2 py-1.5 text-sm"
+                    aria-label="Service branch"
+                  >
+                    {BRANCH_OPTIONS.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={track}
+                    onChange={(e) => {
+                      const t = e.target.value as Track;
+                      setTrack(t);
+                      setGrade(t === "officer" ? "O-1" : "E-4");
+                    }}
+                    className="field rounded-lg px-2 py-1.5 text-sm"
+                    aria-label="Enlisted or officer"
+                  >
+                    <option value="enlisted">Enlisted</option>
+                    <option value="officer">Officer</option>
+                  </select>
+                  <select
+                    value={grade}
+                    onChange={(e) => setGrade(e.target.value)}
+                    className="field rounded-lg px-2 py-1.5 text-sm"
+                    aria-label="Current pay grade"
+                  >
+                    {(track === "officer" ? OFFICER_GRADES : ENLISTED_GRADES).map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-gray-600">at</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={40}
+                    value={yosNow}
+                    onChange={(e) => setYosNow(Math.max(0, Math.min(40, num(e.target.value))))}
+                    className={pctInput}
+                    aria-label="Current years of service"
+                  />
+                  <span className="text-gray-600">YOS</span>
+                </div>
+
+                {basePayNow !== null ? (
+                  <p className="text-xs text-gray-600">
+                    Base pay now:{" "}
+                    <strong>
+                      {fmtUSD0(basePayNow)}/mo ({grade} @ {yosNow} YOS)
+                    </strong>
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-700">
+                    DFAS publishes no {grade} rate at {yosNow} YOS — adjust YOS or grade.
+                  </p>
+                )}
+
+                <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={modelPromotions}
+                    onChange={(e) => setModelPromotions(e.target.checked)}
+                  />
+                  Model typical promotions ({BRANCH_OPTIONS.find((b) => b.value === branch)?.label}{" "}
+                  schedule)
+                </label>
+
+                {modelPromotions && promotionsPreview.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {promotionsPreview.map((p) => (
+                      <span
+                        key={p.monthIndex}
+                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                        style={{ backgroundColor: gradeColor(p.toGrade) }}
+                        title={p.competitive ? "Board/exam-driven — typical timing, not guaranteed" : "Largely time-based"}
+                      >
+                        {p.toGrade} · {startYear + Math.floor(p.monthIndex / 12)}
+                        {p.competitive ? "*" : ""}
+                      </span>
+                    ))}
+                    <span className="self-center text-[10px] text-gray-400">
+                      * board-driven, not guaranteed
+                    </span>
+                  </div>
+                )}
+                {modelPromotions && promotionsPreview.length === 0 && serviceYears > 0 && (
+                  <p className="text-[11px] text-gray-400">
+                    No typical promotions fall inside this service window.
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2 pt-1 text-xs text-gray-600">
+                  <span>Assumed annual military pay raise</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    step={0.1}
+                    value={payRaisePct}
+                    onChange={(e) => setPayRaisePct(Math.max(0, Math.min(8, num(e.target.value))))}
+                    className={pctInput}
+                    aria-label="Assumed annual military pay raise percent"
+                  />
+                  <span>%/yr</span>
+                </div>
               </div>
             </div>
 
@@ -310,8 +566,8 @@ export default function WealthProjectorClient() {
                 <h2 className="text-lg font-semibold">Use your budget</h2>
                 <p className="mt-1 text-xs text-gray-500">
                   Point categories from your saved budget at an account below, then apply. TSP-
-                  and debt-labeled rows are skipped by default (TSP is already modeled above;
-                  debt payments pay down balances, not these accounts).
+                  and debt-labeled rows are skipped by default (TSP is already modeled from your
+                  pay; debt payments pay down balances, not these accounts).
                 </p>
 
                 {visibleCandidates.length === 0 ? (
@@ -382,10 +638,10 @@ export default function WealthProjectorClient() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">TSP</h2>
                 <span className="text-sm font-semibold">
-                  {fmtUSD0(employeeMonthly + agencyMonthly)}/mo
+                  {fmtUSD0(employeeNow + agencyNow)}/mo now
                 </span>
               </div>
-              {(prefill.tspPct || prefill.basePay) && (
+              {(prefill.tspPct || prefill.fundAlloc) && (
                 <p className="mt-1 text-[11px] text-gray-400">
                   Pre-filled from your saved budget — edit anything.
                 </p>
@@ -406,23 +662,7 @@ export default function WealthProjectorClient() {
                       aria-label="Current TSP balance"
                     />
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Base pay</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={100}
-                      value={basePay === 0 ? "" : basePay}
-                      placeholder="0"
-                      onChange={(e) => setBasePay(Math.max(0, num(e.target.value)))}
-                      className="w-20 bg-transparent text-right outline-none"
-                      aria-label="Monthly base pay"
-                    />
-                  </div>
-                  <span className="text-gray-600">/mo · contributing</span>
+                  <span className="text-gray-600">· contributing</span>
                   <input
                     type="number"
                     min={0}
@@ -435,31 +675,21 @@ export default function WealthProjectorClient() {
                     className={pctInput}
                     aria-label="TSP contribution percent of base pay"
                   />
-                  <span className="text-gray-600">%</span>
+                  <span className="text-gray-600">% of base pay</span>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={brs}
-                    onChange={(e) => setBrs(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={brs} onChange={(e) => setBrs(e.target.checked)} />
                   BRS agency contributions (1% automatic + up to 4% match)
                 </label>
                 <p className="text-xs text-gray-500">
-                  You: {fmtUSD0(employeeMonthly)}/mo
-                  {brs && <> · Agency: {fmtUSD0(agencyMonthly)}/mo</>}
-                  {tspCapped && (
-                    <span className="text-amber-700">
-                      {" "}
-                      · capped at the {fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026)} annual limit
-                    </span>
-                  )}
+                  Right now: you {fmtUSD0(employeeNow)}/mo
+                  {brs && <> · agency {fmtUSD0(agencyNow)}/mo</>}
                   {brs && contribPct < 0.05 && (
                     <span className="text-amber-700">
-                      {" "}
-                      · contribute 5% to collect the full match
+                      {" · contribute 5% to collect the full match"}
                     </span>
                   )}
+                  {" — these grow as your pay grows (see Pay & Rank tab)."}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
@@ -555,52 +785,71 @@ export default function WealthProjectorClient() {
               <p className="mt-1 text-xs text-gray-500">
                 Brokerage / IRA money outside the TSP — e.g. an S&amp;P 500 index fund.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-gray-600">Balance</span>
-                <div className="field flex items-center rounded-lg px-2 py-1">
-                  <span className="text-gray-500">$</span>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-gray-600">Balance</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={500}
+                      value={invBalance === 0 ? "" : invBalance}
+                      placeholder="0"
+                      onChange={(e) => setInvBalance(Math.max(0, num(e.target.value)))}
+                      className="w-24 bg-transparent text-right outline-none"
+                      aria-label="Current investment balance"
+                    />
+                  </div>
+                  <span className="text-gray-600">at</span>
                   <input
                     type="number"
-                    min={0}
-                    step={500}
-                    value={invBalance === 0 ? "" : invBalance}
-                    placeholder="0"
-                    onChange={(e) => setInvBalance(Math.max(0, num(e.target.value)))}
-                    className="w-24 bg-transparent text-right outline-none"
-                    aria-label="Current investment balance"
+                    min={-20}
+                    max={30}
+                    step={0.5}
+                    value={invReturnPct}
+                    onChange={(e) => setInvReturnPct(num(e.target.value))}
+                    className={pctInput}
+                    aria-label="Assumed investment annual return percent"
                   />
+                  <span className="text-gray-600">%/yr</span>
                 </div>
-                <span className="text-gray-600">adding</span>
-                <div className="field flex items-center rounded-lg px-2 py-1">
-                  <span className="text-gray-500">$</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={25}
-                    value={invMonthly === 0 ? "" : invMonthly}
-                    placeholder="0"
-                    onChange={(e) => setInvMonthly(Math.max(0, num(e.target.value)))}
-                    className="w-20 bg-transparent text-right outline-none"
-                    aria-label="Monthly investment contribution"
-                  />
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                  <span>Adding</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={25}
+                      value={invMonthly === 0 ? "" : invMonthly}
+                      placeholder="0"
+                      onChange={(e) => setInvMonthly(Math.max(0, num(e.target.value)))}
+                      className="w-16 bg-transparent text-right outline-none"
+                      aria-label="Monthly investment contribution while serving"
+                    />
+                  </div>
+                  <span>/mo while serving ·</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={25}
+                      value={invMonthlyAfter === 0 ? "" : invMonthlyAfter}
+                      placeholder="0"
+                      onChange={(e) => setInvMonthlyAfter(Math.max(0, num(e.target.value)))}
+                      className="w-16 bg-transparent text-right outline-none"
+                      aria-label="Monthly investment contribution after service"
+                    />
+                  </div>
+                  <span>/mo after service</span>
                 </div>
-                <span className="text-gray-600">/mo at</span>
-                <input
-                  type="number"
-                  min={-20}
-                  max={30}
-                  step={0.5}
-                  value={invReturnPct}
-                  onChange={(e) => setInvReturnPct(num(e.target.value))}
-                  className={pctInput}
-                  aria-label="Assumed investment annual return percent"
-                />
-                <span className="text-gray-600">%/yr</span>
+                <p className="text-xs text-gray-500">
+                  {PERF.otherAssets.sp500LongRunPct}% ≈ the S&amp;P 500&apos;s long-run average with
+                  dividends, before inflation. Any given 5-year stretch can be far above or below it.
+                </p>
               </div>
-              <p className="mt-2 text-xs text-gray-500">
-                {PERF.otherAssets.sp500LongRunPct}% ≈ the S&amp;P 500&apos;s long-run average with
-                dividends, before inflation. Any given 5-year stretch can be far above or below it.
-              </p>
             </div>
 
             {/* Savings */}
@@ -612,47 +861,66 @@ export default function WealthProjectorClient() {
               <p className="mt-1 text-xs text-gray-500">
                 Emergency fund and short-term goals in a high-yield savings account.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-gray-600">Balance</span>
-                <div className="field flex items-center rounded-lg px-2 py-1">
-                  <span className="text-gray-500">$</span>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-gray-600">Balance</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={250}
+                      value={savBalance === 0 ? "" : savBalance}
+                      placeholder="0"
+                      onChange={(e) => setSavBalance(Math.max(0, num(e.target.value)))}
+                      className="w-24 bg-transparent text-right outline-none"
+                      aria-label="Current savings balance"
+                    />
+                  </div>
+                  <span className="text-gray-600">at</span>
                   <input
                     type="number"
                     min={0}
-                    step={250}
-                    value={savBalance === 0 ? "" : savBalance}
-                    placeholder="0"
-                    onChange={(e) => setSavBalance(Math.max(0, num(e.target.value)))}
-                    className="w-24 bg-transparent text-right outline-none"
-                    aria-label="Current savings balance"
+                    max={15}
+                    step={0.1}
+                    value={savApyPct}
+                    onChange={(e) => setSavApyPct(Math.max(0, num(e.target.value)))}
+                    className={pctInput}
+                    aria-label="Savings APY percent"
                   />
+                  <span className="text-gray-600">% APY</span>
                 </div>
-                <span className="text-gray-600">adding</span>
-                <div className="field flex items-center rounded-lg px-2 py-1">
-                  <span className="text-gray-500">$</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={25}
-                    value={savMonthly === 0 ? "" : savMonthly}
-                    placeholder="0"
-                    onChange={(e) => setSavMonthly(Math.max(0, num(e.target.value)))}
-                    className="w-20 bg-transparent text-right outline-none"
-                    aria-label="Monthly savings contribution"
-                  />
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                  <span>Adding</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={25}
+                      value={savMonthly === 0 ? "" : savMonthly}
+                      placeholder="0"
+                      onChange={(e) => setSavMonthly(Math.max(0, num(e.target.value)))}
+                      className="w-16 bg-transparent text-right outline-none"
+                      aria-label="Monthly savings contribution while serving"
+                    />
+                  </div>
+                  <span>/mo while serving ·</span>
+                  <div className="field flex items-center rounded-lg px-2 py-1">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={25}
+                      value={savMonthlyAfter === 0 ? "" : savMonthlyAfter}
+                      placeholder="0"
+                      onChange={(e) => setSavMonthlyAfter(Math.max(0, num(e.target.value)))}
+                      className="w-16 bg-transparent text-right outline-none"
+                      aria-label="Monthly savings contribution after service"
+                    />
+                  </div>
+                  <span>/mo after service</span>
                 </div>
-                <span className="text-gray-600">/mo at</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={15}
-                  step={0.1}
-                  value={savApyPct}
-                  onChange={(e) => setSavApyPct(Math.max(0, num(e.target.value)))}
-                  className={pctInput}
-                  aria-label="Savings APY percent"
-                />
-                <span className="text-gray-600">% APY</span>
               </div>
             </div>
           </section>
@@ -660,16 +928,28 @@ export default function WealthProjectorClient() {
           {/* ------------------------------ Results ------------------------------ */}
           <section className="space-y-6 lg:self-start">
             <div className="rounded-3xl border bg-white p-6 shadow-sm md:p-8">
-              <div className="text-sm text-gray-600">
-                Projected net worth (these accounts) by {endYear}
-              </div>
-              <div className="mt-2 text-4xl font-bold tracking-tight">
-                {fmtUSD0(projection.final.total)}
-              </div>
-              <div className="mt-1 text-sm text-gray-600">
-                ≈ {fmtUSD0(projection.final.realTotal)} in today&apos;s dollars ·{" "}
-                {fmtUSD0(projection.totalContributions)} put in +{" "}
-                {fmtUSD0(Math.max(0, projection.totalGrowth))} growth
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <div className="text-sm text-gray-600">
+                    Projected by {endYear} (age {currentAge + projectionYears})
+                  </div>
+                  <div className="mt-1 text-4xl font-bold tracking-tight">
+                    {fmtUSD0(projection.final.total)}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    {`≈ ${fmtUSD0(projection.final.realTotal)} in today's dollars`}
+                  </div>
+                </div>
+                {projection.atSeparation && projectionYears > serviceYears && (
+                  <div className="rounded-2xl border border-dashed px-4 py-2 text-right">
+                    <div className="text-xs text-gray-500">
+                      At separation · {sepYear}, age {currentAge + serviceYears}
+                    </div>
+                    <div className="text-lg font-semibold">
+                      {fmtUSD0(projection.atSeparation.total)}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 {(["tsp", "invest", "savings"] as const).map((k) => {
@@ -678,7 +958,7 @@ export default function WealthProjectorClient() {
                     <span
                       key={k}
                       className="rounded-full border px-2.5 py-1 font-medium"
-                      style={{ color: CHART_COLORS[k], borderColor: `${CHART_COLORS[k]}66` }}
+                      style={{ color: ACCOUNT_COLORS[k], borderColor: `${ACCOUNT_COLORS[k]}66` }}
                     >
                       {label} {fmtUSD0(projection.final.balances[k] ?? 0)}
                     </span>
@@ -686,15 +966,93 @@ export default function WealthProjectorClient() {
                 })}
               </div>
 
-              <div className="mt-5 overflow-hidden rounded-2xl border">
-                <StackedAreaChart
-                  projection={projection}
-                  startTotal={startTotal}
-                  startBalances={Object.fromEntries(
-                    accounts.map((a) => [a.key, Math.max(0, a.startBalance)])
-                  )}
-                  startYear={startYear}
-                />
+              {/* Tabs */}
+              <div className="mt-5 flex flex-wrap gap-1 rounded-2xl border p-1 text-sm">
+                {RESULT_TABS.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setTab(t.value)}
+                    className={`rounded-full px-3 py-1.5 font-medium transition ${
+                      tab === t.value
+                        ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-2xl border">
+                {tab === "growth" && (
+                  <GrowthChart
+                    projection={projection}
+                    startBalances={startBalances}
+                    startYear={startYear}
+                    currentAge={currentAge}
+                    serviceYears={serviceYears}
+                  />
+                )}
+                {tab === "pay" && <PayRankChart projection={projection} startYear={startYear} />}
+                {tab === "flows" && <FlowsChart projection={projection} startYear={startYear} />}
+                {tab === "table" && (
+                  <div className="max-h-[420px] overflow-auto">
+                    <table className="w-full min-w-[680px] text-right text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="border-b text-xs text-gray-500">
+                          <th className="px-3 py-2 text-left font-medium">Year</th>
+                          <th className="py-2 font-medium">Age</th>
+                          <th className="py-2 font-medium">Rank</th>
+                          <th className="py-2 font-medium">Base pay/mo</th>
+                          <th className="py-2 font-medium">TSP</th>
+                          <th className="py-2 font-medium">Invest</th>
+                          <th className="py-2 font-medium">Savings</th>
+                          <th className="py-2 font-medium">Total</th>
+                          <th className="px-3 py-2 font-medium">Today&apos;s $</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projection.years.map((s) => {
+                          const isSep = s.yearIndex === Math.ceil(serviceYears) && serviceYears > 0;
+                          const isEnd = s.yearIndex === projectionYears;
+                          return (
+                            <tr
+                              key={s.yearIndex}
+                              className={`border-b last:border-0 ${
+                                isEnd ? "font-semibold" : ""
+                              } ${isSep ? "bg-[var(--field-bg)]/40" : ""}`}
+                            >
+                              <td className="px-3 py-1.5 text-left">
+                                {startYear + s.yearIndex}
+                                {isSep && (
+                                  <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                                    separation
+                                  </span>
+                                )}
+                                {isEnd && horizonMode === "age" && (
+                                  <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                                    age {targetAge}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5">{s.age}</td>
+                              <td className="py-1.5">{s.serving ? s.grade : "—"}</td>
+                              <td className="py-1.5">
+                                {s.serving ? fmtUSD0(s.basePayMonthly) : "—"}
+                              </td>
+                              <td className="py-1.5">{fmtUSD0(s.balances.tsp)}</td>
+                              <td className="py-1.5">{fmtUSD0(s.balances.invest)}</td>
+                              <td className="py-1.5">{fmtUSD0(s.balances.savings)}</td>
+                              <td className="py-1.5">{fmtUSD0(s.total)}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{fmtUSD0(s.realTotal)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -702,98 +1060,66 @@ export default function WealthProjectorClient() {
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold">What this says</h2>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-gray-600">
-                {brs && agencyTotal > 0 && (
+                {projection.atSeparation && militaryTspAtEnd !== null && (
                   <li>
-                    The BRS match adds <strong>{fmtUSD0(agencyTotal)}</strong> of agency money over{" "}
-                    {years} year{years === 1 ? "" : "s"}
-                    {" before any growth — that's pay you only get by contributing."}
+                    {`Your military years build a ${fmtUSD0(
+                      projection.atSeparation.balances.tsp
+                    )} TSP by separation — left invested, that alone becomes about ${fmtUSD0(
+                      militaryTspAtEnd
+                    )} at age ${currentAge + projectionYears} without another dollar added. That's what your service time gets you.`}
+                  </li>
+                )}
+                {brs && projection.totals.agencyMatch > 0 && (
+                  <li>
+                    {`The BRS match contributes ${fmtUSD0(
+                      projection.totals.agencyMatch
+                    )} of agency money across your service window — pay you only receive by contributing.`}
                   </li>
                 )}
                 <li>
-                  Of your projected {fmtUSD0(projection.final.total)}, growth does{" "}
-                  <strong>
-                    {projection.final.total > 0
+                  {`Of the projected ${fmtUSD0(projection.final.total)}, market growth does ${
+                    projection.final.total > 0
                       ? Math.round(
-                          (Math.max(0, projection.totalGrowth) / projection.final.total) * 100
+                          (Math.max(0, projection.totals.growth) / projection.final.total) * 100
                         )
-                      : 0}
-                    %
-                  </strong>{" "}
-                  of the work. The earlier the dollars go in, the harder they work.
+                      : 0
+                  }% of the work${
+                    doubling !== null
+                      ? ` — at your blended ${(tspReturn * 100).toFixed(
+                          1
+                        )}%/yr TSP return, money doubles roughly every ${doubling.toFixed(
+                          0
+                        )} years (Rule of 72)`
+                      : ""
+                  }.`}
                 </li>
-                {doubling !== null && (
-                  <li>
-                    At your blended TSP return of {(tspReturn * 100).toFixed(1)}%/yr, money doubles
-                    roughly every <strong>{doubling.toFixed(0)} years</strong> (Rule of 72) — TSP
-                    dollars kept invested after separation keep compounding.
-                  </li>
-                )}
                 <li>
-                  Staying <strong>3 more years</strong> (through {endYear + 3}) at this pace ends
-                  near <strong>{fmtUSD0(extended.final.total)}</strong> — a difference of{" "}
-                  {fmtUSD0(extended.final.total - projection.final.total)}. Useful context for
-                  reenlistment or separation planning.
+                  {`Trade space: staying 3 more years (separating ${sepYear + 3} instead of ${sepYear}) ends near ${fmtUSD0(
+                    stayLonger.extended.final.total
+                  )} vs ${fmtUSD0(stayLonger.base.final.total)} at the same end age — a ${fmtUSD0(
+                    stayLonger.extended.final.total - stayLonger.base.final.total
+                  )} difference from extra contributions, match, and promotions.`}
                 </li>
-                {savApyPct < inflationPct && savMonthly + savBalance > 0 && (
+                {modelPromotions && promotionsPreview.some((p) => p.competitive) && (
                   <li>
-                    Your savings APY ({savApyPct}%) is below your inflation assumption (
-                    {inflationPct}%), so cash slowly loses buying power — keep the emergency fund
-                    there, but think hard before parking long-term money in cash.
+                    Promotions marked * are board- or exam-driven; the schedule shows typical
+                    timing, not a guarantee. Toggle promotion modeling off to see the floor.
                   </li>
                 )}
               </ul>
-            </div>
-
-            {/* Year-by-year table */}
-            <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold">Year by year</h2>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[560px] text-right text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-gray-500">
-                      <th className="py-2 text-left font-medium">Year</th>
-                      <th className="py-2 font-medium">TSP</th>
-                      <th className="py-2 font-medium">Investments</th>
-                      <th className="py-2 font-medium">Savings</th>
-                      <th className="py-2 font-medium">Total</th>
-                      <th className="py-2 font-medium">Today&apos;s $</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projection.years.map((s) => (
-                      <tr
-                        key={s.yearIndex}
-                        className={`border-b last:border-0 ${
-                          s.yearIndex === years ? "font-semibold" : ""
-                        }`}
-                      >
-                        <td className="py-1.5 text-left">
-                          {startYear + s.yearIndex}
-                          {s.yearIndex === years && (
-                            <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
-                              end of commitment
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-1.5">{fmtUSD0(s.balances.tsp ?? 0)}</td>
-                        <td className="py-1.5">{fmtUSD0(s.balances.invest ?? 0)}</td>
-                        <td className="py-1.5">{fmtUSD0(s.balances.savings ?? 0)}</td>
-                        <td className="py-1.5">{fmtUSD0(s.total)}</td>
-                        <td className="py-1.5 text-gray-500">{fmtUSD0(s.realTotal)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
 
             {/* Assumptions & sources */}
             <div className="rounded-3xl border bg-gray-50 p-5 text-xs leading-5 text-gray-600">
               <h2 className="text-sm font-semibold text-gray-800">Assumptions &amp; data</h2>
               <p className="mt-2">
-                TSP fund return presets are compound annual returns through{" "}
-                {PERF.asOf.slice(0, 4)} (long-run figures are index-backfilled to 1987–88; verify
-                at{" "}
+                {`How it computes: your branch's typical promotion schedule sets your rank over time (see the Pay & Rank tab); rank + years of service look up base pay in the ${
+                  basepay.year ?? 2026
+                } DFAS tables, escalated by your assumed annual raise; the TSP percentage and BRS match are taken from that pay each month; each account compounds monthly at your assumed return. Contributions stop (or switch to your after-service amounts) at separation.`}
+              </p>
+              <p className="mt-2">
+                TSP fund return presets are compound annual returns (long-run figures
+                index-backfilled to 1987–88; verify at{" "}
                 <a
                   href="https://www.tsp.gov/fund-performance/"
                   target="_blank"
@@ -835,18 +1161,17 @@ export default function WealthProjectorClient() {
                 </table>
               </div>
               <p className="mt-2">
-                Projections compound monthly at your assumed rates with steady contributions; real
-                results arrive unevenly (see 2022 above). Taxes on the investment account,
-                contribution-limit changes, and pay raises are not modeled. Not affiliated with the
-                FRTIB or tsp.gov. Pair this with the{" "}
-                <Link href="/toolkits/retirement-tsp" className="underline underline-offset-2">
-                  TSP &amp; Retirement toolkit
-                </Link>{" "}
-                and the{" "}
+                Not modeled: taxes on the investment account, TSP contribution-limit growth,
+                BAH/BAS (allowances aren&apos;t TSP-matched), the High-3/BRS pension, or early
+                promotions. Promotion timing comes from the same per-branch schedules as the{" "}
+                <Link href="/toolkits/promotion-timeline" className="underline underline-offset-2">
+                  Career Timeline
+                </Link>
+                {" — open it for the milestone-by-milestone view. Pair with the "}
                 <Link href="/budget" className="underline underline-offset-2">
                   Budget Builder
                 </Link>
-                .
+                {" to fund the contributions."}
               </p>
             </div>
           </section>
@@ -854,149 +1179,4 @@ export default function WealthProjectorClient() {
       )}
     </main>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Stacked area chart: TSP + investments + savings by year, with a dashed
-// today's-dollars total line. Self-contained SVG, no external deps.
-// ---------------------------------------------------------------------------
-function StackedAreaChart({
-  projection,
-  startTotal,
-  startBalances,
-  startYear,
-}: {
-  projection: ReturnType<typeof projectWealth>;
-  startTotal: number;
-  startBalances: Record<string, number>;
-  startYear: number;
-}) {
-  const W = 920;
-  const H = 380;
-  const ML = 68;
-  const MR = 20;
-  const MT = 20;
-  const MB = 36;
-
-  const points = [
-    { yearIndex: 0, balances: startBalances, total: startTotal, realTotal: startTotal },
-    ...projection.years,
-  ];
-  const n = points.length - 1;
-  const maxTotal = Math.max(1, ...points.map((p) => p.total));
-
-  const x = (i: number) => ML + (i / Math.max(1, n)) * (W - ML - MR);
-  const y = (v: number) => MT + (1 - v / maxTotal) * (H - MT - MB);
-
-  // Stack order: TSP (bottom), investments, savings (top).
-  const keys = ["tsp", "invest", "savings"] as const;
-  const stacked = points.map((p) => {
-    let acc = 0;
-    const levels: Record<string, { from: number; to: number }> = {};
-    for (const k of keys) {
-      const v = p.balances[k] ?? 0;
-      levels[k] = { from: acc, to: acc + v };
-      acc += v;
-    }
-    return levels;
-  });
-
-  function areaPath(key: (typeof keys)[number]) {
-    const top = stacked.map((s, i) => `${x(i).toFixed(1)},${y(s[key].to).toFixed(1)}`);
-    const bottom = stacked
-      .map((s, i) => `${x(i).toFixed(1)},${y(s[key].from).toFixed(1)}`)
-      .reverse();
-    return `M${top.join("L")}L${bottom.join("L")}Z`;
-  }
-
-  const realLine = points
-    .map((p, i) => `${x(i).toFixed(1)},${y(p.realTotal).toFixed(1)}`)
-    .join("L");
-
-  // ~4 horizontal gridlines at round values.
-  const step = niceStep(maxTotal / 4);
-  const gridVals: number[] = [];
-  for (let v = step; v <= maxTotal; v += step) gridVals.push(v);
-
-  // Label every year up to 8 points, then every other/steps.
-  const labelEvery = n <= 8 ? 1 : n <= 16 ? 2 : 5;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label="Projected balances by year, stacked by account"
-      className="block w-full"
-    >
-      <rect width={W} height={H} fill="white" />
-      {gridVals.map((v) => (
-        <g key={v}>
-          <line x1={ML} x2={W - MR} y1={y(v)} y2={y(v)} stroke="#e5e7eb" strokeWidth={1} />
-          <text x={ML - 8} y={y(v) + 4} textAnchor="end" fontSize={12} fill="#6b7280">
-            {compactUSD(v)}
-          </text>
-        </g>
-      ))}
-      {(["savings", "invest", "tsp"] as const).map((k) => (
-        <path key={k} d={areaPath(k)} fill={CHART_COLORS[k]} fillOpacity={0.75} />
-      ))}
-      <path
-        d={`M${realLine}`}
-        fill="none"
-        stroke="#374151"
-        strokeWidth={2}
-        strokeDasharray="6 4"
-      />
-      {points.map((p, i) =>
-        i % labelEvery === 0 || i === n ? (
-          <text
-            key={i}
-            x={x(i)}
-            y={H - 12}
-            textAnchor="middle"
-            fontSize={12}
-            fill="#6b7280"
-          >
-            {startYear + p.yearIndex}
-          </text>
-        ) : null
-      )}
-      {/* Legend */}
-      <g transform={`translate(${ML + 8}, ${MT + 4})`} fontSize={12}>
-        {(
-          [
-            ["tsp", "TSP"],
-            ["invest", "Investments"],
-            ["savings", "Savings"],
-          ] as const
-        ).map(([k, label], i) => (
-          <g key={k} transform={`translate(${i * 110}, 0)`}>
-            <rect width={10} height={10} y={2} rx={2} fill={CHART_COLORS[k]} fillOpacity={0.8} />
-            <text x={14} y={11} fill="#374151">
-              {label}
-            </text>
-          </g>
-        ))}
-        <g transform="translate(330, 0)">
-          <line x1={0} x2={18} y1={7} y2={7} stroke="#374151" strokeWidth={2} strokeDasharray="6 4" />
-          <text x={22} y={11} fill="#374151">
-            Total in today&apos;s dollars
-          </text>
-        </g>
-      </g>
-    </svg>
-  );
-}
-
-function niceStep(raw: number): number {
-  const mag = Math.pow(10, Math.floor(Math.log10(Math.max(1, raw))));
-  const norm = raw / mag;
-  const nice = norm >= 5 ? 5 : norm >= 2 ? 2.5 : norm >= 1 ? 2 : 1;
-  return nice * mag;
-}
-
-function compactUSD(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${Math.round(v / 1_000)}k`;
-  return `$${Math.round(v)}`;
 }

@@ -17,6 +17,11 @@ import {
   yearsToDouble,
   type AccountInput,
 } from "@/lib/projection/wealth";
+import {
+  applyAssignments,
+  budgetContributionCandidates,
+  type ContributionDestination,
+} from "@/lib/projection/budget-link";
 import fundPerformance from "@/data/tsp/fund-performance.json";
 
 const emptySubscribe = () => () => {};
@@ -36,6 +41,27 @@ type FundPerf = {
 const PERF = fundPerformance as unknown as FundPerf;
 const FUND_KEYS = TSP_FUNDS.map((f) => f.key);
 
+// One-time read of the saved Budget Builder state (used for prefill and the
+// "Use your budget" contribution assignments). Shape is best-effort — every
+// consumer guards the fields it reads.
+type StoredBudget = {
+  income?: Array<{ id?: string; label?: string; amount?: number }>;
+  expenses?: Array<{ id?: string; label?: string; amount?: number }>;
+  tspPct?: number;
+  tspBaseId?: string;
+  fundAlloc?: FundAllocation;
+};
+
+function loadSavedBudgetRaw(): StoredBudget | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("activepayos:budget:v1");
+    return raw ? (JSON.parse(raw) as StoredBudget) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Pull starting values from the saved Budget Builder state when it exists, so
 // the projector opens on the user's real numbers without any new data entry.
 function loadBudgetPrefill(): {
@@ -43,11 +69,9 @@ function loadBudgetPrefill(): {
   tspPct?: number;
   fundAlloc?: FundAllocation;
 } {
-  if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem("activepayos:budget:v1");
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = loadSavedBudgetRaw();
+    if (!parsed) return {};
     const income: Array<{ id?: string; label?: string; amount?: number }> = Array.isArray(
       parsed?.income
     )
@@ -98,6 +122,12 @@ export default function WealthProjectorClient() {
     >
   );
   const [showTspDetail, setShowTspDetail] = useState(false);
+
+  // ---- "Use your budget" contribution assignments ----
+  const [candidates] = useState(() => budgetContributionCandidates(loadSavedBudgetRaw()));
+  const [assignments, setAssignments] = useState<Record<string, ContributionDestination>>({});
+  const [showAllRows, setShowAllRows] = useState(false);
+  const [budgetNote, setBudgetNote] = useState<string | null>(null);
 
   // ---- Taxable investments & savings ----
   const [invBalance, setInvBalance] = useState(1000);
@@ -192,6 +222,23 @@ export default function WealthProjectorClient() {
     return Number.isFinite(n) ? n : fallback;
   }
 
+  const destinationOf = (id: string, suggested: ContributionDestination) =>
+    assignments[id] ?? suggested;
+  const visibleCandidates = showAllRows
+    ? candidates
+    : candidates.filter((c) => destinationOf(c.id, c.suggested) !== "skip");
+  const assignedTotals = applyAssignments(candidates, assignments);
+
+  function applyBudgetAssignments() {
+    setSavMonthly(assignedTotals.savingsMonthly);
+    setInvMonthly(assignedTotals.investMonthly);
+    setBudgetNote(
+      `Applied — savings now ${fmtUSD0(assignedTotals.savingsMonthly)}/mo and investments ${fmtUSD0(
+        assignedTotals.investMonthly
+      )}/mo. Adjust either below anytime.`
+    );
+  }
+
   return (
     <main className="space-y-8">
       <header className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
@@ -256,6 +303,79 @@ export default function WealthProjectorClient() {
                 <span>%/yr (for today&apos;s-dollar figures)</span>
               </div>
             </div>
+
+            {/* Budget → contributions hand-off */}
+            {candidates.length > 0 && (
+              <div className="rounded-3xl border border-[var(--brand-blue)]/40 bg-[var(--brand-blue)]/5 p-5 shadow-sm">
+                <h2 className="text-lg font-semibold">Use your budget</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  Point categories from your saved budget at an account below, then apply. TSP-
+                  and debt-labeled rows are skipped by default (TSP is already modeled above;
+                  debt payments pay down balances, not these accounts).
+                </p>
+
+                {visibleCandidates.length === 0 ? (
+                  <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-gray-600">
+                    No savings-type categories or leftover found in your budget — use “show all”
+                    to assign any category or income row.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-1.5">
+                    {visibleCandidates.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate" title={c.label}>
+                          {c.label}
+                          {c.kind === "leftover" && (
+                            <span className="ml-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                              income − expenses
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-gray-600">{fmtUSD0(c.monthly)}/mo</span>
+                        <select
+                          value={destinationOf(c.id, c.suggested)}
+                          onChange={(e) =>
+                            setAssignments((prev) => ({
+                              ...prev,
+                              [c.id]: e.target.value as ContributionDestination,
+                            }))
+                          }
+                          className="field shrink-0 rounded-lg px-2 py-1 text-xs"
+                          aria-label={`Where ${c.label} goes in the projection`}
+                        >
+                          <option value="savings">→ Savings</option>
+                          <option value="invest">→ Investments</option>
+                          <option value="skip">Skip</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={applyBudgetAssignments}
+                    className="rounded-full border border-black bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                  >
+                    Apply {fmtUSD0(assignedTotals.savingsMonthly)} + {fmtUSD0(assignedTotals.investMonthly)}
+                    /mo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRows((s) => !s)}
+                    className="text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
+                  >
+                    {showAllRows ? "Show suggested only" : "Show all categories & income"}
+                  </button>
+                </div>
+                {budgetNote && (
+                  <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-xs text-gray-600">
+                    {budgetNote}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* TSP */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">

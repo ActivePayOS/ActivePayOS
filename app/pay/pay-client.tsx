@@ -271,7 +271,11 @@ export default function PayClient({
   const router = useRouter();
   const initialSupportedYear = YEARS.find((y) => y === initialYear) ?? YEARS[0];
   const [year, setYear] = useState<(typeof YEARS)[number]>(initialSupportedYear);
-  const [grade, setGrade] = useState<PayGrade>("O-1");
+  // The select starts unselected ("Rank" placeholder); downstream math uses a
+  // typed PayGrade fallback, but results/exports stay gated until a real pick.
+  const [gradeChoice, setGradeChoice] = useState<PayGrade | "">("");
+  const gradeSelected = gradeChoice !== "";
+  const grade: PayGrade = gradeChoice === "" ? "O-1" : gradeChoice;
   const [branch, setBranch] = useState<BranchId | "">("");
   const [yos, setYos] = useState<number>(0);
   const [zip, setZip] = useState<string>("");
@@ -816,9 +820,13 @@ export default function PayClient({
             <button
               type="button"
               onClick={downloadBudget}
-              disabled={exporting}
+              disabled={exporting || !gradeSelected}
               className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-              title="Download your pay summary in the selected format."
+              title={
+                gradeSelected
+                  ? "Download your pay summary in the selected format."
+                  : "Select your rank first to download a pay summary."
+              }
             >
               {exporting ? "Preparing..." : "Download"}
             </button>
@@ -900,7 +908,7 @@ export default function PayClient({
                 value={branch}
                 onChange={(e) => setBranch(e.target.value as BranchId | "")}
               >
-                <option value="">Select branch</option>
+                <option value="">Service branch</option>
                 {BRANCHES.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -930,15 +938,17 @@ export default function PayClient({
               <select
                 id="pay-grade"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
-                value={grade}
+                value={gradeChoice}
                 onChange={(e) => {
-                  const nextGrade = e.target.value as PayGrade;
-                  setGrade(nextGrade);
-                  if (!isSpecialGrade(nextGrade) && !hasBasePayForYos(basepay, year, nextGrade, yos)) {
-                    setYos(firstSupportedYos(basepay, year, nextGrade, yos));
+                  const nextChoice = e.target.value as PayGrade | "";
+                  setGradeChoice(nextChoice);
+                  if (nextChoice === "") return;
+                  if (!isSpecialGrade(nextChoice) && !hasBasePayForYos(basepay, year, nextChoice, yos)) {
+                    setYos(firstSupportedYos(basepay, year, nextChoice, yos));
                   }
                 }}
               >
+                <option value="">Rank</option>
                 {GRADE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -1367,13 +1377,32 @@ export default function PayClient({
             <button
               type="button"
               onClick={sendToBudget}
-              className="w-fit shrink-0 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800"
-              title="Send these pay numbers to the Budget Builder to auto-fill a budget."
+              disabled={!gradeSelected}
+              className="w-fit shrink-0 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              title={
+                gradeSelected
+                  ? "Send these pay numbers to the Budget Builder to auto-fill a budget."
+                  : "Select your rank first to build a budget from your pay."
+              }
             >
               Send to Budget →
             </button>
           </div>
 
+          {!gradeSelected && (
+            <div className="mt-6 rounded-3xl border border-dashed bg-gray-50 p-8 text-center">
+              <p className="text-base font-medium text-gray-700">
+                Select your rank to see your pay.
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                Choose a service branch and rank in the inputs above and your monthly
+                and annual totals will appear here.
+              </p>
+            </div>
+          )}
+
+          {gradeSelected && (
+          <>
           <div className="mt-6 rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
             <div className="text-sm text-gray-600">
               Estimated monthly total
@@ -2083,6 +2112,8 @@ export default function PayClient({
             )}
           </div>
             </>
+          )}
+          </>
           )}
         </section>
       </div>

@@ -22,6 +22,21 @@ import {
   type TransferMode,
   type PayTransfer,
 } from "@/lib/budget/transfer";
+import {
+  BUCKET_LABELS,
+  BUCKET_TARGETS,
+  autoBalance,
+  computeCoach,
+  type Bucket,
+  type BucketOverrides,
+} from "@/lib/budget/coach";
+import {
+  emergencyFundTarget,
+  goalEtaLabel,
+  goalProgress,
+  isSavingsGoal,
+  type SavingsGoal,
+} from "@/lib/budget/goals";
 import { buildPaySummary } from "@/lib/export/summary";
 import { generatePayCsv } from "@/lib/export/csv";
 import { generatePayTxt } from "@/lib/export/txt";
@@ -69,6 +84,8 @@ type SavedBudget = {
   tspPct?: number;
   tspBaseId?: string;
   fundAlloc?: FundAllocation;
+  bucketOverrides?: BucketOverrides;
+  goals?: SavingsGoal[];
 };
 
 function loadSaved(): SavedBudget | null {
@@ -87,6 +104,11 @@ function loadSaved(): SavedBudget | null {
       tspBaseId: typeof parsed.tspBaseId === "string" ? parsed.tspBaseId : undefined,
       fundAlloc:
         parsed.fundAlloc && typeof parsed.fundAlloc === "object" ? parsed.fundAlloc : undefined,
+      bucketOverrides:
+        parsed.bucketOverrides && typeof parsed.bucketOverrides === "object"
+          ? parsed.bucketOverrides
+          : undefined,
+      goals: Array.isArray(parsed.goals) ? parsed.goals.filter(isSavingsGoal) : undefined,
     };
   } catch {
     return null;
@@ -116,6 +138,16 @@ export default function BudgetClient() {
   });
   const [captureInto, setCaptureInto] = useState<string>("");
   const [savedNote, setSavedNote] = useState<string | null>(null);
+
+  // 50/30/20 coach: user corrections to the automatic needs/wants/savings
+  // classification, keyed by expense row id.
+  const [bucketOverrides, setBucketOverrides] = useState<BucketOverrides>(
+    () => loadSaved()?.bucketOverrides ?? {}
+  );
+  const [coachNote, setCoachNote] = useState<string | null>(null);
+
+  // Emergency-fund & savings goals.
+  const [goals, setGoals] = useState<SavingsGoal[]>(() => loadSaved()?.goals ?? []);
 
   // TSP (retirement). When importing, deductions (incl. TSP) come in as their
   // own expense rows, so the percentage-based section starts at 0.
@@ -171,12 +203,12 @@ export default function BudgetClient() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ income, expenses, tspPct, tspBaseId, fundAlloc })
+        JSON.stringify({ income, expenses, tspPct, tspBaseId, fundAlloc, bucketOverrides, goals })
       );
     } catch {
       // storage blocked; ignore
     }
-  }, [mounted, income, expenses, tspPct, tspBaseId, fundAlloc]);
+  }, [mounted, income, expenses, tspPct, tspBaseId, fundAlloc, bucketOverrides, goals]);
 
   // Resolve the catch-all category against the rows that actually exist.
   const captureExists = expenses.some((e) => e.id === captureInto);
@@ -223,6 +255,24 @@ export default function BudgetClient() {
   const captured = captureId !== null && leftover > 0;
   const capturedLabel = expenses.find((e) => e.id === captureId)?.label;
 
+  // ---- 50/30/20 coach ----
+  const coach = useMemo(
+    () => computeCoach(graph.totalIncome, expenses, tspMonthly, bucketOverrides),
+    [graph.totalIncome, expenses, tspMonthly, bucketOverrides]
+  );
+
+  // ---- Savings goals ----
+  // Funding pace: cash savings rows + any unallocated leftover. TSP is real
+  // saving but it's locked for retirement, so it doesn't fund near-term goals.
+  const cashSavingsMonthly = coach.rows
+    .filter((r) => r.bucket === "savings")
+    .reduce((a, r) => a + r.amount, 0);
+  const goalContributionMonthly = cashSavingsMonthly + Math.max(0, leftover);
+  const nonTaxSpendMonthly = coach.rows
+    .filter((r) => r.bucket !== "offtop")
+    .reduce((a, r) => a + r.amount, 0);
+  const emergencyTarget = emergencyFundTarget(coach.buckets.needs.total, nonTaxSpendMonthly);
+
   function update(setter: typeof setIncome, id: string, patch: Partial<BudgetItem>) {
     setter((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   }
@@ -241,9 +291,49 @@ export default function BudgetClient() {
     setTspPct(0.05);
     setTspBaseId("inc-1");
     setFundAlloc(DEFAULT_FUND_ALLOCATION);
+    setBucketOverrides({});
+    setGoals([]);
+    setCoachNote(null);
     setImportedNote(null);
     setTransferDismissed(true);
     setSavedNote("Reset to the example budget.");
+  }
+
+  // ---- 50/30/20 coach actions ----
+  const BUCKET_CYCLE: Bucket[] = ["needs", "wants", "savings", "offtop"];
+  function cycleBucket(rowId: string, current: Bucket) {
+    const next = BUCKET_CYCLE[(BUCKET_CYCLE.indexOf(current) + 1) % BUCKET_CYCLE.length];
+    setBucketOverrides((prev) => ({ ...prev, [rowId]: next }));
+  }
+
+  function handleAutoBalance() {
+    const result = autoBalance(graph.totalIncome, expenses, tspMonthly, bucketOverrides, () => {
+      idCounter.current += 1;
+      return `row-${idCounter.current}`;
+    });
+    if (!result) {
+      setCoachNote("Add income above your tax rows first — there's nothing to balance yet.");
+      return;
+    }
+    setExpenses(result.expenses);
+    setCaptureInto("");
+    setCoachNote(
+      result.createdLabels.length > 0
+        ? `Balanced to 50/30/20 and added ${result.createdLabels.join(" and ")} for you. Every row stays editable.`
+        : "Balanced your categories to the 50/30/20 guideline. Every row stays editable."
+    );
+  }
+
+  // ---- Savings goal actions ----
+  function addGoal(label: string, target: number) {
+    idCounter.current += 1;
+    setGoals((prev) => [...prev, { id: `goal-${idCounter.current}`, label, target, saved: 0 }]);
+  }
+  function updateGoal(id: string, patch: Partial<SavingsGoal>) {
+    setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+  }
+  function removeGoal(id: string) {
+    setGoals((prev) => prev.filter((g) => g.id !== id));
   }
 
   function exportPng() {
@@ -551,6 +641,142 @@ export default function BudgetClient() {
               </button>
             </div>
 
+            {/* --------------------------- 50/30/20 coach --------------------------- */}
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">50/30/20 coach</h2>
+                {coach.afterTaxMonthly > 0 && (
+                  <span className="text-xs text-gray-500">
+                    after-tax {fmtUSD0(coach.afterTaxMonthly)}/mo
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                A starter guideline: 50% of after-tax income to needs, 30% to wants, 20% to savings
+                &amp; debt payoff. Tap a category chip if we sorted it into the wrong bucket.
+              </p>
+
+              {coach.afterTaxMonthly <= 0 ? (
+                <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  Add your income above and the coach will measure your budget against the
+                  50/30/20 guideline.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-4 space-y-3">
+                    {(["needs", "wants", "savings"] as const).map((key) => {
+                      const b = coach.buckets[key];
+                      const diff = b.pct - BUCKET_TARGETS[key];
+                      const over = diff > 0.02;
+                      const under = diff < -0.02;
+                      const offGuideline = key === "savings" ? under : over;
+                      const barColor =
+                        key === "needs" ? "#3b82f6" : key === "wants" ? "#f59e0b" : "#22c55e";
+                      return (
+                        <div key={key}>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium">
+                              {BUCKET_LABELS[key]}{" "}
+                              <span className="text-gray-400">
+                                · target {Math.round(BUCKET_TARGETS[key] * 100)}%
+                              </span>
+                            </span>
+                            <span
+                              className="font-medium"
+                              style={{ color: offGuideline ? "#b45309" : "#15803d" }}
+                            >
+                              {Math.round(b.pct * 100)}% · {fmtUSD0(b.total)}
+                            </span>
+                          </div>
+                          <div className="relative mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                            <div
+                              className="h-2 rounded-full"
+                              style={{
+                                width: `${Math.min(100, b.pct * 100)}%`,
+                                backgroundColor: barColor,
+                              }}
+                            />
+                            {/* Target tick */}
+                            <div
+                              className="absolute top-0 h-2 w-0.5 bg-gray-500/70"
+                              style={{ left: `${BUCKET_TARGETS[key] * 100}%` }}
+                            />
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-gray-500">
+                            {key === "savings"
+                              ? under
+                                ? `${fmtUSD0(Math.abs(b.deltaMonthly))}/mo short of the 20% guideline.`
+                                : "On or above the guideline — keep it automatic."
+                              : over
+                              ? `${fmtUSD0(b.deltaMonthly)}/mo over the guideline.`
+                              : "Within the guideline."}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Row chips: tap to re-bucket a category */}
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {coach.rows
+                      .filter((r) => r.amount > 0)
+                      .map((r) => {
+                        const chipColor =
+                          r.bucket === "needs"
+                            ? "border-blue-300 bg-blue-50 text-blue-800"
+                            : r.bucket === "wants"
+                            ? "border-amber-300 bg-amber-50 text-amber-800"
+                            : r.bucket === "savings"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : "border-gray-300 bg-gray-100 text-gray-500";
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => cycleBucket(r.id, r.bucket)}
+                            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition hover:opacity-80 ${chipColor}`}
+                            title={`${BUCKET_LABELS[r.bucket]} — tap to change bucket`}
+                          >
+                            {r.label || "Expense"}
+                            {r.bucket === "offtop" ? " (excluded)" : ""}
+                          </button>
+                        );
+                      })}
+                    {tspMonthly > 0 && (
+                      <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                        TSP {fmtUSD0(tspMonthly)}/mo (savings)
+                      </span>
+                    )}
+                  </div>
+                  {coach.offTopTotal > 0 && (
+                    <p className="mt-2 text-[11px] text-gray-400">
+                      Taxes &amp; FICA ({fmtUSD0(coach.offTopTotal)}/mo) come off the top and are
+                      excluded from the 50/30/20 split.
+                    </p>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAutoBalance}
+                      className="rounded-full border border-black bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                      title="Rewrite category amounts to match 50/30/20 of your after-tax income."
+                    >
+                      Auto-balance to 50/30/20
+                    </button>
+                    <span className="text-[11px] text-gray-500">
+                      Rewrites amounts in place — you can edit or reset anything after.
+                    </span>
+                  </div>
+                  {coachNote && (
+                    <p className="mt-2 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                      {coachNote}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
             {/* ------------------------------ TSP ------------------------------ */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
@@ -714,6 +940,128 @@ export default function BudgetClient() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* --------------------------- Savings goals --------------------------- */}
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Savings goals</h2>
+                <span className="text-sm font-semibold">
+                  {fmtUSD0(goalContributionMonthly)}/mo
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Funded by your savings categories plus any unallocated leftover
+                {tspMonthly > 0 ? " (TSP is retirement money, so it doesn't count here)" : ""}.
+                An emergency fund of 3 months of essentials is the standard first goal.
+              </p>
+
+              {goals.length > 0 && (
+                <div className="mt-4 space-y-4">
+                  {goals.map((g) => {
+                    const p = goalProgress(g, goalContributionMonthly);
+                    return (
+                      <div key={g.id} className="rounded-2xl border p-3">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={g.label}
+                            onChange={(e) => updateGoal(g.id, { label: e.target.value })}
+                            className="field min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm"
+                            aria-label="Goal name"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeGoal(g.id)}
+                            className="rounded-lg border px-2 py-1.5 text-sm text-gray-500 hover:text-gray-900"
+                            aria-label={`Remove goal ${g.label}`}
+                            title="Remove goal"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="text-gray-600">Target</span>
+                          <div className="field flex items-center rounded-lg px-2 py-1">
+                            <span className="text-gray-500">$</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={100}
+                              value={g.target === 0 ? "" : g.target}
+                              placeholder="0"
+                              onChange={(e) => {
+                                const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                updateGoal(g.id, {
+                                  target: Number.isFinite(v) ? Math.max(0, v) : 0,
+                                });
+                              }}
+                              className="w-20 bg-transparent text-right outline-none"
+                              aria-label="Goal target amount"
+                            />
+                          </div>
+                          <span className="text-gray-600">saved so far</span>
+                          <div className="field flex items-center rounded-lg px-2 py-1">
+                            <span className="text-gray-500">$</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={100}
+                              value={g.saved === 0 ? "" : g.saved}
+                              placeholder="0"
+                              onChange={(e) => {
+                                const v = e.target.value === "" ? 0 : Number(e.target.value);
+                                updateGoal(g.id, {
+                                  saved: Number.isFinite(v) ? Math.max(0, v) : 0,
+                                });
+                              }}
+                              className="w-20 bg-transparent text-right outline-none"
+                              aria-label="Amount already saved"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-2 rounded-full bg-emerald-500"
+                            style={{ width: `${p.fraction * 100}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          {g.target <= 0
+                            ? "Set a target amount to project a finish date."
+                            : p.done
+                            ? "Funded — nice work. 🎉"
+                            : p.monthsToGoal === null
+                            ? `${fmtUSD0(p.remaining)} to go — add monthly savings to project a date.`
+                            : `${fmtUSD0(p.remaining)} to go · about ${p.monthsToGoal} month${
+                                p.monthsToGoal === 1 ? "" : "s"
+                              } at this pace (${goalEtaLabel(p.monthsToGoal, new Date())}).`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!goals.some((g) => /emergency/i.test(g.label)) && emergencyTarget > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => addGoal("Emergency fund (3 months)", emergencyTarget)}
+                    className="rounded-xl border border-dashed px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900"
+                    title="3 months of your essential (needs) spending — the DoD Financial Readiness starter goal."
+                  >
+                    + Emergency fund ({fmtUSD0(emergencyTarget)})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => addGoal("New goal", 0)}
+                  className="rounded-xl border border-dashed px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900"
+                >
+                  + Add goal
+                </button>
+              </div>
             </div>
 
             <div className="rounded-3xl border bg-gray-50 p-5">

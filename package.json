@@ -24,7 +24,8 @@
     "bah:verify": "node scripts/verify_bah_2026.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/run-smoke-tests.mjs"
+    "test": "node scripts/run-smoke-tests.mjs",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -47,6 +48,7 @@
     "eslint-config-next": "16.1.6",
     "playwright": "^1.58.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

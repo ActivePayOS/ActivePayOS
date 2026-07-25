@@ -2,6 +2,9 @@ import { defineConfig } from "playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
+  // Vitest owns tests/unit (run with `npm run test:unit`); Playwright only
+  // runs the browser specs.
+  testMatch: "*.spec.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

@@ -3,7 +3,8 @@
 // Representative monthly amounts and typical tax treatment — all editable by
 // the user, because most of these vary by service, grade, years, and location.
 // HFP/IDP is shown non-taxable (the common combat-zone case); the rest default
-// taxable. Figures are public Department of War / DFAS (FMR Vol. 7A) estimates.
+// taxable. Figures are public Department of War / Department of Defense (DoD)
+// and DFAS (FMR Vol. 7A) estimates.
 
 export type SpecialPay = {
   id: string;

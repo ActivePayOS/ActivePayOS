@@ -42,6 +42,39 @@ export default function ContactPage() {
       </div>
 
       <div className="rounded-2xl border p-5">
+        <h2 className="text-lg font-semibold">Security issues</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          Found a vulnerability? Please report it privately — not in a public issue. Use GitHub&apos;s{" "}
+          <a
+            href={`${GITHUB_REPO}/security/advisories/new`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            private vulnerability reporting
+          </a>{" "}
+          or email{" "}
+          <a
+            href="mailto:contact@activepayos.com?subject=SECURITY"
+            className="underline"
+          >
+            contact@activepayos.com
+          </a>{" "}
+          with the subject <span className="font-medium">SECURITY</span>. Our{" "}
+          <a
+            href={`${GITHUB_REPO}/blob/main/SECURITY.md`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            security policy
+          </a>{" "}
+          covers scope and testing guidelines — in short, please test against a local clone, not the
+          live site.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border p-5">
         <h2 className="text-lg font-semibold">On GitHub</h2>
         <p className="mt-2 text-sm text-gray-600">
           ActivePayOS is open source. The fastest way to get something fixed — or to pitch in — is on

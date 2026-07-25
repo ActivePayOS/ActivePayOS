@@ -34,19 +34,19 @@ const privacySections = [
   },
   {
     title: "Spreadsheet exports",
-    text: "If you use a spreadsheet/PDF export, the values you provide are sent to ActivePayOS only to generate the file you download; they are not stored or kept after the file is produced.",
+    text: "The one exception to browser-only processing: if you use a file export (budget spreadsheet/PDF or timeline download), the values you entered are sent to ActivePayOS once, used in memory to generate the file you download, and discarded. They are not written to disk, logged, or kept after the file is produced.",
   },
   {
-    title: "Data storage",
-    text: "ActivePayOS is intended to keep calculator use simple and lightweight. Unless a feature clearly says otherwise, do not assume that information you enter is stored as part of a permanent financial account or official record.",
+    title: "No accounts, no database",
+    text: "ActivePayOS has no user accounts and no database. There is nothing to sign up for, and nothing you enter is stored on our servers. If you choose \"Save to this device\" in a tool, that data lives only in your own browser's local storage.",
   },
   {
-    title: "Cookies and analytics",
-    text: "ActivePayOS may use basic website analytics, hosting logs, or similar tools to understand site performance and improve the experience. If analytics or cookies are added later, this page should be updated to reflect that clearly.",
+    title: "No analytics, no ads, no tracking",
+    text: "ActivePayOS currently uses no analytics, no advertising, and no tracking cookies. The only thing stored in your browser is your theme preference and anything you explicitly save to your device. Our hosting provider keeps standard web server logs of page requests (like every website), but calculator inputs are not part of page URLs and do not appear in them. If analytics are ever added, this page will be updated first to say exactly what is collected.",
   },
   {
     title: "Official sources still control",
-    text: "ActivePayOS is not part of the U.S. Department of War (formerly the Department of Defense), DFAS, the U.S. military, or any government agency. Official pay systems, DFAS guidance, and your LES control over any estimate shown here.",
+    text: "ActivePayOS is not part of the U.S. Department of War / Department of Defense (DoD), DFAS, the U.S. military, or any government agency. Official pay systems, DFAS guidance, and your LES control over any estimate shown here.",
   },
   {
     title: "Children's privacy",
@@ -73,6 +73,22 @@ export default function PrivacyPage() {
           A simple explanation of what ActivePayOS does with the information you
           enter while using the site.
         </p>
+
+        <div className="mt-5 max-w-3xl rounded-2xl border-2 border-[var(--brand-blue,#1d4ed8)] bg-blue-50 p-5">
+          <h2 className="text-base font-semibold text-gray-900">
+            The short version: your inputs stay in your browser.
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-gray-700">
+            Every calculator on this site — pay, BAH, budget, housing, PCS, and
+            promotion timeline — runs entirely on your device. Your pay grade,
+            dependent status, ZIP code, and budget numbers are never sent to our
+            servers, stored, or logged. The single exception is the optional
+            file exports (budget spreadsheet/PDF and timeline downloads), which
+            send your inputs to the server once to build the file you download
+            and discard them immediately. We have no
+            accounts, no database, no analytics, and no ads.
+          </p>
+        </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Link

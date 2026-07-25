@@ -40,7 +40,7 @@ npm run audit:pay-data
 
 ActivePayOS is for education and planning only.
 
-It is not an official U.S. Department of War (formerly the Department of Defense), DFAS, or U.S. military website. It does not provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependent status, deductions, special pays, government quarters, meal plans, state of legal residence, and service-specific rules.
+It is not an official U.S. Department of War / Department of Defense (DoD), DFAS, or U.S. military website. It does not provide legal, tax, financial, or official payroll advice. Pay entitlements can vary based on duty status, location, dependent status, deductions, special pays, government quarters, meal plans, state of legal residence, and service-specific rules.
 
 Always verify major decisions with your Leave and Earnings Statement (LES), myPay, DFAS, and official military guidance.
 
@@ -79,6 +79,14 @@ ActivePayOS is being built in public as a community-reviewed military pay toolki
 
 The repository is public and **open source** so anyone can inspect the source, verify the data approach, report issues, and propose improvements. This is a community-owned, non-profit public good: we are actively looking for collaborators and want the community to help drive development alongside the maintainers.
 
+## Privacy
+
+All calculators run entirely in the browser — pay grade, dependent status, ZIP code, and budget inputs are never stored or logged. The only server round trip is the optional file export (budget spreadsheet/PDF and timeline downloads), which uses your inputs in memory to generate the file and discards them. There are no accounts, no database, no analytics, and no ads. See the [Privacy page](https://activepayos.com/privacy).
+
+## Security
+
+Please report vulnerabilities privately via [GitHub private vulnerability reporting](https://github.com/ActivePayOS/ActivePayOS/security/advisories/new) or contact@activepayos.com (subject: `SECURITY`) — not in a public issue. See [SECURITY.md](SECURITY.md) for scope and testing guidelines; in short, test against a local clone rather than the live site.
+
 ## Contributing & community
 
 ActivePayOS is community-owned and we would love your help — code, data accuracy, ideas, or feedback. See [CONTRIBUTING.md](CONTRIBUTING.md), browse the [open issues](https://github.com/ActivePayOS/ActivePayOS/issues), or [file a ticket](https://github.com/ActivePayOS/ActivePayOS/issues/new).
@@ -93,4 +101,4 @@ ActivePayOS is **open source**.
 
 Copyright (C) 2026 Simon Gott, Nick Parker, and ActivePayOS contributors.
 
-ActivePayOS is not an official U.S. Department of War (formerly the Department of Defense), DFAS, or U.S. military website and is not affiliated with any branch of the U.S. military. It does not provide legal, tax, or financial advice. Always verify with your LES, myPay, and DFAS.
+ActivePayOS is not an official U.S. Department of War / Department of Defense (DoD), DFAS, or U.S. military website and is not affiliated with any branch of the U.S. military. It does not provide legal, tax, or financial advice. Always verify with your LES, myPay, and DFAS.

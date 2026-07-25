@@ -136,8 +136,8 @@ export default function RootLayout({
               </p>
               <p>
                 ActivePayOS is an independent, open-source project and is not affiliated with,
-                endorsed by, or connected to the U.S. Department of War (formerly the Department of
-                Defense), DFAS, the VA, or any branch of the U.S. military. Pay, BAH, BAS, retirement, and benefit figures are
+                endorsed by, or connected to the U.S. Department of War / Department of Defense
+                (DoD), DFAS, the VA, or any branch of the U.S. military. Pay, BAH, BAS, retirement, and benefit figures are
                 estimates generated from public U.S. Government reference data and may not reflect
                 your actual entitlements.
               </p>

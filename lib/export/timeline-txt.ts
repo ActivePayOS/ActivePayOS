@@ -62,7 +62,7 @@ export function generateTimelineTxt(
   out.push(`Promotion timing source: ${result.source.label}`);
   out.push(`  ${result.source.url}`);
   out.push("");
-  out.push("Not an official Department of War, DFAS, VA, or branch promotion document.");
+  out.push("Not an official Department of War / Department of Defense (DoD), DFAS, VA, or branch promotion document.");
   out.push("Best for enlisted planning; officer mode is a broad commissioned-service sketch.");
   out.push("Actual dates depend on branch, career field, eligibility, PME, TIG/TIS, waivers,");
   out.push("manning, boards, performance, and policy changes. Verify with official sources.");

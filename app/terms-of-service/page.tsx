@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     "Terms of Service for ActivePayOS — an independent, educational military pay and planning tool. Provided AS IS with no warranty; not financial, tax, or legal advice.",
 };
 
-const UPDATED = "July 1, 2026";
+const UPDATED = "July 24, 2026";
 
 export default function TermsOfServicePage() {
   return (
@@ -30,8 +30,8 @@ export default function TermsOfServicePage() {
           <h2 className="text-lg font-semibold text-gray-900">2. Not an official or affiliated service</h2>
           <p className="mt-2">
             ActivePayOS is an independent project. It is <strong>not</strong> affiliated with,
-            endorsed by, or connected to the U.S. Department of War (formerly the Department of
-            Defense), the Defense Finance and Accounting Service (DFAS), the Department of Veterans
+            endorsed by, or connected to the U.S. Department of War / Department of Defense
+            (DoD), the Defense Finance and Accounting Service (DFAS), the Department of Veterans
             Affairs, or any branch of the U.S. military. Any references to those organizations are for identification and educational
             purposes only.
           </p>

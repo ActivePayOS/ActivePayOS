@@ -152,7 +152,7 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           commissioned-service timing and should be treated as a rough sketch.
         </p>
         <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Planning estimates only — not an official Department of War, DFAS, VA, or branch promotion tool. Actual
+          Planning estimates only — not an official Department of War / Department of Defense (DoD), DFAS, VA, or branch promotion tool. Actual
           dates depend on branch policy, career field, eligibility, PME, TIG/TIS, waivers, manning,
           boards, performance, and policy changes.
         </div>

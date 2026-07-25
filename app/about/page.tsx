@@ -109,8 +109,8 @@ export default function AboutPage() {
         ActivePayOS is an independent, educational planning tool and a personal project of its
         maintainers and contributors, created and maintained in their personal capacities only. It is
         not produced in anyone&apos;s official capacity, and it does not represent the views of — and
-        is not an official website of — the U.S. Department of War (formerly the Department of
-        Defense), DFAS, or the VA. It is not affiliated with or endorsed by any branch of the U.S.
+        is not an official website of — the U.S. Department of War / Department of Defense
+        (DoD), DFAS, or the VA. It is not affiliated with or endorsed by any branch of the U.S.
         military, and does not provide financial, tax, or legal advice. Figures are estimates —
         always verify with your LES, myPay, and DFAS before making decisions. See the full
         disclaimer in the page footer, our{" "}

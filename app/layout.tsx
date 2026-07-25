@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import BrandLogo from "@/components/BrandLogo";
-import ThemeToggle from "@/components/ThemeToggle";
+import SiteHeader from "@/components/SiteHeader";
 import { GITHUB_REPO } from "@/components/ContributeCTA";
 import "./globals.css";
 
@@ -59,78 +58,59 @@ export default function RootLayout({
           }}
         />
         <div className="mx-auto max-w-6xl px-6">
-          <header className="flex flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
-            <BrandLogo />
+          <SiteHeader />
 
-            <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium">
-              <Link href="/" className="hover:text-[var(--brand-blue)]">
-                Pay
-              </Link>
-              <Link href="/budget" className="hover:text-[var(--brand-blue)]">
-                Budget
-              </Link>
-              <Link href="/housing" className="hover:text-[var(--brand-blue)]">
-                Housing
-              </Link>
-              <Link href="/pcs" className="hover:text-[var(--brand-blue)]">
-                PCS
-              </Link>
-              <Link href="/toolkits/promotion-timeline" className="hover:text-[var(--brand-blue)]">
-                Timeline
-              </Link>
-              <Link href="/toolkits" className="hover:text-[var(--brand-blue)]">
-                Toolkits
-              </Link>
-              <Link href="/about" className="hover:text-[var(--brand-blue)]">
-                About
-              </Link>
-              <ThemeToggle />
-            </nav>
-          </header>
-
-          <div className="pb-16">{children}</div>
+          <div className="pb-16 pt-8">{children}</div>
 
           <footer className="border-t py-8 text-xs text-gray-500">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="font-medium text-gray-700">
-                © {new Date().getFullYear()} ActivePayOS — built by the military community, for the
-                military community.
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <div className="text-sm font-semibold text-gray-700">ActivePayOS</div>
+                <p className="mt-2 leading-5">
+                  Built by the military community, for the military community. Free, open source,
+                  and private — your numbers stay in your browser.
+                </p>
               </div>
-
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Link href="/terms-of-service" className="hover:underline">
-                  Terms of Service
-                </Link>
-                <Link href="/terms" className="hover:underline">
-                  Terms Explained
-                </Link>
-                <Link href="/accuracy" className="hover:underline">
-                  Accuracy
-                </Link>
-                <Link href="/resources" className="hover:underline">
-                  Resources
-                </Link>
-                <Link href="/about" className="hover:underline">
-                  About
-                </Link>
-                <Link href="/contact" className="hover:underline">
-                  Contact
-                </Link>
-                <Link href="/privacy" className="hover:underline">
-                  Privacy
-                </Link>
-                <a
-                  href={GITHUB_REPO}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:underline"
-                >
-                  GitHub
-                </a>
+              <div>
+                <div className="font-semibold uppercase tracking-wide text-gray-600">Tools</div>
+                <div className="mt-2 grid gap-1.5">
+                  <Link href="/" className="hover:underline">Pay Calculator</Link>
+                  <Link href="/budget" className="hover:underline">Budget Builder</Link>
+                  <Link href="/toolkits/wealth-projector" className="hover:underline">Wealth Projector</Link>
+                  <Link href="/toolkits/promotion-timeline" className="hover:underline">Career Timeline</Link>
+                  <Link href="/housing" className="hover:underline">Housing</Link>
+                  <Link href="/pcs" className="hover:underline">PCS</Link>
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold uppercase tracking-wide text-gray-600">Learn</div>
+                <div className="mt-2 grid gap-1.5">
+                  <Link href="/toolkits" className="hover:underline">Toolkits</Link>
+                  <Link href="/terms" className="hover:underline">Terms Explained</Link>
+                  <Link href="/resources" className="hover:underline">Resources</Link>
+                  <Link href="/accuracy" className="hover:underline">Accuracy</Link>
+                </div>
+              </div>
+              <div>
+                <div className="font-semibold uppercase tracking-wide text-gray-600">Project</div>
+                <div className="mt-2 grid gap-1.5">
+                  <Link href="/about" className="hover:underline">About</Link>
+                  <Link href="/contact" className="hover:underline">Contact</Link>
+                  <Link href="/privacy" className="hover:underline">Privacy</Link>
+                  <Link href="/terms-of-service" className="hover:underline">Terms of Service</Link>
+                  <a href={GITHUB_REPO} target="_blank" rel="noreferrer" className="hover:underline">
+                    GitHub
+                  </a>
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 space-y-3 border-t pt-6 leading-5">
+            <div className="mt-8 border-t pt-6 font-medium text-gray-700">
+              © {new Date().getFullYear()} ActivePayOS — built by the military community, for the
+              military community.
+            </div>
+
+            <div className="mt-4 space-y-3 leading-5">
               <p className="font-semibold text-gray-600">
                 Not official U.S. Government data. For educational and planning purposes only.
               </p>

@@ -31,6 +31,9 @@ import {
   gradeColor,
 } from "@/components/charts/WealthCharts";
 import fundPerformance from "@/data/tsp/fund-performance.json";
+import PlanFlow from "@/components/PlanFlow";
+import Explain from "@/components/Explain";
+import { loadPaySnapshot } from "@/lib/profile/handoff";
 
 const emptySubscribe = () => () => {};
 
@@ -99,11 +102,12 @@ function loadBudgetPrefill(): { tspPct?: number; fundAlloc?: FundAllocation } {
 export default function WealthProjectorClient({ basepay }: { basepay: BasePayDataset }) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
-  // ---- Career ----
-  const [branch, setBranch] = useState<BranchId>("army");
-  const [track, setTrack] = useState<Track>("enlisted");
-  const [grade, setGrade] = useState("E-4");
-  const [yosNow, setYosNow] = useState(4);
+  // ---- Career (pre-filled from the Pay Calculator's snapshot when present) ----
+  const [paySnap] = useState(loadPaySnapshot);
+  const [branch, setBranch] = useState<BranchId>(() => paySnap?.branch ?? "army");
+  const [track, setTrack] = useState<Track>(() => paySnap?.track ?? "enlisted");
+  const [grade, setGrade] = useState(() => paySnap?.grade ?? "E-4");
+  const [yosNow, setYosNow] = useState(() => paySnap?.yos ?? 4);
   const [modelPromotions, setModelPromotions] = useState(true);
   const [payRaisePct, setPayRaisePct] = useState(2.0);
 
@@ -117,7 +121,9 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   // ---- TSP ----
   const [prefill] = useState(loadBudgetPrefill);
   const [tspBalance, setTspBalance] = useState(5000);
-  const [contribPct, setContribPct] = useState(() => prefill.tspPct ?? 0.05);
+  const [contribPct, setContribPct] = useState(
+    () => paySnap?.tspPct ?? prefill.tspPct ?? 0.05
+  );
   const [brs, setBrs] = useState(true);
   const [alloc, setAlloc] = useState<FundAllocation>(
     () => prefill.fundAlloc ?? DEFAULT_FUND_ALLOCATION
@@ -299,6 +305,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
   return (
     <main className="space-y-8">
+      <PlanFlow current="project" />
       <header className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -354,6 +361,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     onChange={(e) => setServiceYears(Math.max(0, Math.min(30, num(e.target.value, 5))))}
                     className={pctInput}
                     aria-label="Years more you'll serve"
+                    title="How much longer you stay on active duty. Military pay, TSP contributions, and the BRS match run only through this window."
                   />
                   <span className="text-gray-600">more years{" "}
                     <span className="text-gray-400">(→ {sepYear}, age {currentAge + serviceYears})</span>
@@ -407,6 +415,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                         }
                         className={pctInput}
                         aria-label="Project to this age"
+                        title="The projection keeps compounding to this age even after you separate — useful for seeing what your military-era savings are worth at, say, 60."
                       />
                       <span className="text-xs text-gray-500">(→ {endYear})</span>
                     </span>
@@ -431,6 +440,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     onChange={(e) => setInflationPct(Math.max(0, Math.min(10, num(e.target.value))))}
                     className={pctInput}
                     aria-label="Inflation percent per year"
+                    title="Used only to translate future balances into today's purchasing power (the dashed line and Today's $ column). The Federal Reserve targets 2%."
                   />
                   <span>%/yr (for today&apos;s-dollar figures)</span>
                 </div>
@@ -444,6 +454,11 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 Your projected rank sets your base pay from the DFAS tables, and base pay is what
                 the TSP percentage and BRS match are computed from.
               </p>
+              {paySnap && (
+                <p className="mt-1 rounded-xl bg-[var(--field-bg)]/50 px-2.5 py-1.5 text-[11px] text-gray-600">
+                  {`Pre-filled from your Pay Calculator (${paySnap.grade} @ ${paySnap.yos} YOS) — edit anything.`}
+                </p>
+              )}
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <select
@@ -499,9 +514,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 {basePayNow !== null ? (
                   <p className="text-xs text-gray-600">
                     Base pay now:{" "}
-                    <strong>
-                      {fmtUSD0(basePayNow)}/mo ({grade} @ {yosNow} YOS)
-                    </strong>
+                    <Explain
+                      title={`Looked up in the ${basepay.year ?? 2026} DFAS pay table for ${grade} at ${yosNow} years of service. This is the number your TSP percentage and the BRS match multiply.`}
+                      className="font-semibold"
+                    >
+                      {`${fmtUSD0(basePayNow)}/mo (${grade} @ ${yosNow} YOS)`}
+                    </Explain>
                   </p>
                 ) : (
                   <p className="text-xs text-amber-700">
@@ -554,6 +572,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     onChange={(e) => setPayRaisePct(Math.max(0, Math.min(8, num(e.target.value))))}
                     className={pctInput}
                     aria-label="Assumed annual military pay raise percent"
+                    title="Congress adjusts the pay tables most years. This escalates the whole table annually on top of promotion and YOS raises (recent raises have ranged roughly 2-5%)."
                   />
                   <span>%/yr</span>
                 </div>
@@ -637,7 +656,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">TSP</h2>
-                <span className="text-sm font-semibold">
+                <span
+                  className="cursor-help text-sm font-semibold"
+                  title="Total flowing into your TSP this month: your contribution plus the agency's. It rises automatically as promotions and YOS raise your base pay."
+                >
                   {fmtUSD0(employeeNow + agencyNow)}/mo now
                 </span>
               </div>
@@ -674,6 +696,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     }
                     className={pctInput}
                     aria-label="TSP contribution percent of base pay"
+                    title="TSP contributions are a percent of base pay only — not BAH or BAS. 5% collects the full BRS match."
                   />
                   <span className="text-gray-600">% of base pay</span>
                 </div>
@@ -682,8 +705,24 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   BRS agency contributions (1% automatic + up to 4% match)
                 </label>
                 <p className="text-xs text-gray-500">
-                  Right now: you {fmtUSD0(employeeNow)}/mo
-                  {brs && <> · agency {fmtUSD0(agencyNow)}/mo</>}
+                  Right now:{" "}
+                  <Explain
+                    title={`Your ${Math.round(contribPct * 100)}% of ${fmtUSD0(
+                      basePayNow ?? 0
+                    )} base pay, capped at the ${fmtUSD0(
+                      TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                    )} annual elective-deferral limit.`}
+                  >
+                    {`you ${fmtUSD0(employeeNow)}/mo`}
+                  </Explain>
+                  {brs && (
+                    <>
+                      {" · "}
+                      <Explain title="BRS agency money: 1% of base pay automatic, plus a match of 100% on your first 3% and 50% on your next 2% — worth 5% total when you contribute at least 5%.">
+                        {`agency ${fmtUSD0(agencyNow)}/mo`}
+                      </Explain>
+                    </>
+                  )}
                   {brs && contribPct < 0.05 && (
                     <span className="text-amber-700">
                       {" · contribute 5% to collect the full match"}
@@ -704,9 +743,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     <option value="tenYear">Last 10 years (2016–2025)</option>
                     <option value="custom">Custom</option>
                   </select>
-                  <span className="font-medium text-gray-700">
-                    blended ≈ {(tspReturn * 100).toFixed(1)}%/yr
-                  </span>
+                  <Explain
+                    title="Your fund mix's weighted-average assumed annual return — each fund's return times its share of the allocation. The TSP balance compounds at this rate."
+                    className="font-medium text-gray-700"
+                  >
+                    {`blended ≈ ${(tspReturn * 100).toFixed(1)}%/yr`}
+                  </Explain>
                 </div>
 
                 <button
@@ -780,7 +822,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Investment account</h2>
-                <span className="text-sm font-semibold">{fmtUSD0(invMonthly)}/mo</span>
+                <span
+                  className="cursor-help text-sm font-semibold"
+                  title="What you're adding to this account each month while serving. Set a different after-service pace below."
+                >
+                  {fmtUSD0(invMonthly)}/mo
+                </span>
               </div>
               <p className="mt-1 text-xs text-gray-500">
                 Brokerage / IRA money outside the TSP — e.g. an S&amp;P 500 index fund.
@@ -856,7 +903,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Savings</h2>
-                <span className="text-sm font-semibold">{fmtUSD0(savMonthly)}/mo</span>
+                <span
+                  className="cursor-help text-sm font-semibold"
+                  title="What you're adding to savings each month while serving. Set a different after-service pace below."
+                >
+                  {fmtUSD0(savMonthly)}/mo
+                </span>
               </div>
               <p className="mt-1 text-xs text-gray-500">
                 Emergency fund and short-term goals in a high-yield savings account.
@@ -934,10 +986,16 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     Projected by {endYear} (age {currentAge + projectionYears})
                   </div>
                   <div className="mt-1 text-4xl font-bold tracking-tight">
-                    {fmtUSD0(projection.final.total)}
+                    <Explain title="Everything combined — TSP + investments + savings — at the end of your projection horizon, in future (nominal) dollars, using your assumed returns.">
+                      {fmtUSD0(projection.final.total)}
+                    </Explain>
                   </div>
                   <div className="mt-1 text-sm text-gray-600">
-                    {`≈ ${fmtUSD0(projection.final.realTotal)} in today's dollars`}
+                    <Explain
+                      title={`The same total deflated by your ${inflationPct}%/yr inflation assumption — what it would buy in today's money.`}
+                    >
+                      {`≈ ${fmtUSD0(projection.final.realTotal)} in today's dollars`}
+                    </Explain>
                   </div>
                 </div>
                 {projection.atSeparation && projectionYears > serviceYears && (
@@ -946,7 +1004,9 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                       At separation · {sepYear}, age {currentAge + serviceYears}
                     </div>
                     <div className="text-lg font-semibold">
-                      {fmtUSD0(projection.atSeparation.total)}
+                      <Explain title="Your combined balance the year you leave the service — after this point the model stops military pay and TSP contributions and lets the balances compound.">
+                        {fmtUSD0(projection.atSeparation.total)}
+                      </Explain>
                     </div>
                   </div>
                 )}
@@ -954,10 +1014,25 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 {(["tsp", "invest", "savings"] as const).map((k) => {
                   const label = k === "tsp" ? "TSP" : k === "invest" ? "Investments" : "Savings";
+                  const explain =
+                    k === "tsp"
+                      ? `TSP at the horizon: today's balance plus your ${Math.round(
+                          contribPct * 100
+                        )}% of base pay${brs ? " and the BRS match" : ""} each month while serving, compounding at ${(
+                          tspReturn * 100
+                        ).toFixed(1)}%/yr.`
+                      : k === "invest"
+                      ? `Investment account at the horizon: balance plus ${fmtUSD0(
+                          invMonthly
+                        )}/mo while serving (${fmtUSD0(invMonthlyAfter)}/mo after), compounding at ${invReturnPct}%/yr.`
+                      : `Savings at the horizon: balance plus ${fmtUSD0(
+                          savMonthly
+                        )}/mo while serving (${fmtUSD0(savMonthlyAfter)}/mo after), at ${savApyPct}% APY.`;
                   return (
                     <span
                       key={k}
-                      className="rounded-full border px-2.5 py-1 font-medium"
+                      title={explain}
+                      className="cursor-help rounded-full border px-2.5 py-1 font-medium"
                       style={{ color: ACCOUNT_COLORS[k], borderColor: `${ACCOUNT_COLORS[k]}66` }}
                     >
                       {label} {fmtUSD0(projection.final.balances[k] ?? 0)}

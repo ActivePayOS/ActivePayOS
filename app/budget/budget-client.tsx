@@ -47,6 +47,7 @@ import {
   type BudgetExport,
 } from "@/lib/export/budget-summary";
 import { generateBudgetPdf } from "@/lib/export/budget-pdf";
+import PlanFlow from "@/components/PlanFlow";
 
 type ReportFormat = "csv" | "txt" | "pdf";
 type ReportScope = "budget" | "combined" | "pay";
@@ -489,6 +490,7 @@ export default function BudgetClient() {
 
   return (
     <main className="space-y-8">
+      <PlanFlow current="budget" />
       <header className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -646,7 +648,10 @@ export default function BudgetClient() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">50/30/20 coach</h2>
                 {coach.afterTaxMonthly > 0 && (
-                  <span className="text-xs text-gray-500">
+                  <span
+                    className="cursor-help text-xs text-gray-500"
+                    title="Your total income minus the tax/FICA rows — the denominator the 50/30/20 percentages are measured against."
+                  >
                     after-tax {fmtUSD0(coach.afterTaxMonthly)}/mo
                   </span>
                 )}
@@ -955,7 +960,10 @@ export default function BudgetClient() {
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Savings goals</h2>
-                <span className="text-sm font-semibold">
+                <span
+                  className="cursor-help text-sm font-semibold"
+                  title="Your goal-funding pace: savings-bucket categories plus any unallocated leftover. TSP is excluded because retirement money can't fund near-term goals."
+                >
                   {fmtUSD0(goalContributionMonthly)}/mo
                 </span>
               </div>

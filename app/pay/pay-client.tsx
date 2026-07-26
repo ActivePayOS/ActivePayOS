@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import PlanFlow from "@/components/PlanFlow";
+import { mapPayBranch, mapPayGrade, savePaySnapshot } from "@/lib/profile/handoff";
 import { getBahLookup } from "@/lib/pay/bah";
 import SankeySvg from "@/components/sankey/SankeySvg";
 import { useThemeColors, type ThemeColors } from "@/components/sankey/useThemeColors";
@@ -392,6 +395,22 @@ export default function PayClient({
     takeHomeBeforeWithholding: estimatedTakeHomeBeforeWithholding * 12,
   };
 
+  // Silently snapshot the career-shaped inputs so the Wealth Projector and the
+  // journey strip pick them up — localStorage only, nothing leaves the browser.
+  useEffect(() => {
+    if (!gradeSelected) return;
+    const mapped = mapPayGrade(grade);
+    if (!mapped) return; // warrant/cadet grades aren't modeled by the projector
+    savePaySnapshot({
+      branch: mapPayBranch(branch || undefined),
+      track: mapped.track,
+      grade: mapped.grade,
+      yos,
+      tspPct,
+      grossMonthly: total,
+    });
+  }, [gradeSelected, grade, branch, yos, tspPct, total]);
+
   const denomTotal = total > 0 ? total : 1;
   const pctBase = (basePay / denomTotal) * 100;
   const pctBah = ((bah ?? 0) / denomTotal) * 100;
@@ -740,6 +759,7 @@ export default function PayClient({
 
   return (
     <main className="space-y-10">
+      <PlanFlow current="pay" />
       <section className="rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
         {branchInfo && (
           <div
@@ -1374,19 +1394,37 @@ export default function PayClient({
                 Monthly totals with a clearer take-home picture.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={sendToBudget}
-              disabled={!gradeSelected}
-              className="w-fit shrink-0 rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-              title={
-                gradeSelected
-                  ? "Send these pay numbers to the Budget Builder to auto-fill a budget."
-                  : "Select your rank first to build a budget from your pay."
-              }
-            >
-              Send to Budget →
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={sendToBudget}
+                disabled={!gradeSelected}
+                className="w-fit rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                title={
+                  gradeSelected
+                    ? "Send these pay numbers to the Budget Builder to auto-fill a budget."
+                    : "Select your rank first to build a budget from your pay."
+                }
+              >
+                Send to Budget →
+              </button>
+              {gradeSelected ? (
+                <Link
+                  href="/toolkits/wealth-projector"
+                  className="w-fit rounded-full border px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-100"
+                  title="Open the Wealth Projector pre-filled with this grade, time in service, and TSP percentage."
+                >
+                  Project my wealth →
+                </Link>
+              ) : (
+                <span
+                  className="w-fit cursor-not-allowed rounded-full border px-4 py-2 text-sm font-medium text-gray-400 opacity-60 shadow-sm"
+                  title="Select your rank first — the projection starts from your pay."
+                >
+                  Project my wealth →
+                </span>
+              )}
+            </div>
           </div>
 
           {!gradeSelected && (
@@ -1407,7 +1445,10 @@ export default function PayClient({
             <div className="text-sm text-gray-600">
               Estimated monthly total
             </div>
-            <div className="mt-2 text-4xl font-bold tracking-tight">
+            <div
+              className="mt-2 cursor-help text-4xl font-bold tracking-tight"
+              title="Base Pay + BAH + BAS + any special pays you added — your gross monthly military compensation before taxes and deductions."
+            >
               {fmtUSD(total)}
             </div>
             <div className="mt-2 flex items-baseline gap-2">

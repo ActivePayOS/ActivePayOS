@@ -26,6 +26,7 @@ import {
 } from "@/lib/pay/civilian";
 import { SPECIAL_PAY_PRESETS, SPECIAL_PAY_COLORS, type SpecialPay } from "@/lib/pay/special-pays";
 import { BRANCHES, getBranch, type BranchId } from "@/lib/pay/branches";
+import InfoDot from "@/components/InfoDot";
 import { buildPaySummary } from "@/lib/export/summary";
 import { generatePayPdf } from "@/lib/export/pdf";
 import {
@@ -476,9 +477,6 @@ export default function PayClient({
       : inputLayout === "hybrid"
       ? "max-w-2xl grid-cols-1 sm:grid-cols-2"
       : "sm:grid-cols-2 lg:grid-cols-4";
-  // Full-width span for the helper line + the nested ZIP/family block.
-  const inputSpanFull =
-    inputLayout === "vertical" ? "" : inputLayout === "hybrid" ? "sm:col-span-2" : "sm:col-span-2 lg:col-span-5";
   const nestedInputGridClass =
     inputLayout === "vertical"
       ? "grid-cols-1"
@@ -1014,7 +1012,8 @@ export default function PayClient({
 
             <div>
               <label htmlFor="state-of-legal-residence" className="block text-sm font-medium">
-                State of Legal Residence
+                State of Legal Residence{" "}
+                <InfoDot text="Used for state-specific tax context. To include state tax in the take-home estimate, set your rate in the take-home section below." />
               </label>
               <select
                 id="state-of-legal-residence"
@@ -1031,14 +1030,11 @@ export default function PayClient({
               </select>
             </div>
 
-            <p className={`mt-1 text-xs text-gray-500 ${inputSpanFull}`}>
-              Used for the State tax disclaimer; set your state rate under take-home to include it.
-            </p>
-
             <div className={`grid gap-3 ${nestedInputGridClass}`}>
               <div className={!receivesBah ? "opacity-60" : ""}>
                 <label htmlFor="duty-zip" className="block text-sm font-medium">
-                  Duty ZIP (for BAH)
+                  Duty ZIP (for BAH){" "}
+                  <InfoDot text="Your duty station's ZIP sets the local housing allowance. ZIP+4 works too (e.g., 02139-1234). Not needed when BAH is set to $0." />
                 </label>
                 <input
                   id="duty-zip"
@@ -1048,11 +1044,6 @@ export default function PayClient({
                   disabled={!receivesBah}
                   onChange={(e) => setZip(e.target.value)}
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  {receivesBah
-                    ? "Tip: ZIP+4 works too (e.g., 02139-1234)."
-                    : "ZIP is not required when BAH is set to $0."}
-                </p>
                 {bahError && (
                   <p className="mt-2 text-sm text-red-600">
                     {bahError}
@@ -1076,16 +1067,15 @@ export default function PayClient({
                         onChange={(e) => setReceivesBah(!e.target.checked)}
                       />
                       <span>
-                        Barracks / government housing (no BAH)
-                        <span className="mt-1 block text-xs text-gray-500">
-                          Select this if you do not receive BAH. The budget sheet will use $0 for housing allowance.
-                        </span>
+                        Barracks / government housing (no BAH){" "}
+                        <InfoDot text="Select this if you do not receive BAH. Pay totals and the budget sheet will use $0 for housing allowance." />
                       </span>
                     </label>
 
                     <div className={!receivesBah ? "opacity-60" : ""}>
                       <label htmlFor="family-size" className="block text-sm font-medium">
-                        Family size, including yourself
+                        Family size, including yourself{" "}
+                        <InfoDot text="2 or more uses the BAH with-dependents rate; 1 uses the without-dependents rate. The rate doesn't change further with family size." />
                       </label>
                       <input
                         id="family-size"
@@ -1100,11 +1090,6 @@ export default function PayClient({
                           setFamilySize(Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 1))))
                         }
                       />
-                      <span className="mt-1 block text-xs text-gray-500">
-                        {dependents
-                          ? "Uses the BAH with-dependents rate."
-                          : "Enter 2 or more to use the BAH with-dependents rate."}
-                      </span>
                     </div>
                   </>
                 )}
@@ -1113,11 +1098,10 @@ export default function PayClient({
           </div>
 
           <div className="mt-8 border-t pt-6">
-            <h2 className="text-lg font-semibold">Estimate your take-home (optional)</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Adds federal &amp; state tax, FICA, TSP, and SGLI to estimate what actually lands in
-              your bank account.
-            </p>
+            <h2 className="text-lg font-semibold">
+              Estimate your take-home (optional){" "}
+              <InfoDot text="Adds federal & state tax, FICA, TSP, and SGLI to estimate what actually lands in your bank account. Educational estimate — your LES is the source of truth." />
+            </h2>
             <div className={`mt-6 grid items-start gap-4 ${takeHomeGridClass}`}>
               <div>
                 <label htmlFor="filing-status" className="block text-sm font-medium">
@@ -1254,10 +1238,6 @@ export default function PayClient({
                 </p>
               </div>
             </div>
-            <p className="mt-3 text-xs text-gray-500">
-              Federal tax assumes the {year} standard deduction and no other income or credits; state
-              tax uses the flat rate you enter. Estimates only — your LES is the source of truth.
-            </p>
           </div>
 
           <div className="mt-8 border-t pt-6">
@@ -1442,27 +1422,25 @@ export default function PayClient({
           {gradeSelected && (
           <>
           <div className="mt-6 rounded-3xl border bg-white p-6 md:p-8 shadow-sm">
-            <div className="text-sm text-gray-600">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gray-400">
               Estimated monthly total
-            </div>
-            <div
-              className="mt-2 cursor-help text-4xl font-bold tracking-tight"
-              title="Base Pay + BAH + BAS + any special pays you added — your gross monthly military compensation before taxes and deductions."
-            >
-              {fmtUSD(total)}
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <div className="text-sm text-gray-600">Annual</div>
-              <div className="text-base font-semibold text-gray-900">
-                {fmtUSD0(annual.total)}
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              Total = Base Pay + BAH + BAS
             </p>
-
-            <p className="mt-2 text-xs text-gray-500">
-              Includes {fmtUSD(nonTaxableIncomeMonthly)} in generally non-taxable allowances (BAH + BAS).
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-5xl font-light tracking-tight md:text-6xl">
+                {fmtUSD(total)}
+              </span>
+              <span className="text-sm text-gray-500">/ month</span>
+              <InfoDot
+                text={`Base Pay + BAH + BAS${
+                  specialTotal > 0 ? " + special pays" : ""
+                } — gross military compensation before taxes and deductions. Includes ${fmtUSD(
+                  nonTaxableIncomeMonthly
+                )} in generally non-taxable allowances (BAH + BAS).`}
+              />
+            </div>
+            <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+              {`${fmtUSD0(annual.total)} annual`}
+              <InfoDot text="The monthly total × 12. Actual annual figures vary with mid-year raises, promotions, and PCS moves." />
             </p>
           </div>
 
@@ -2159,15 +2137,18 @@ export default function PayClient({
         </section>
       </div>
 
-      <section className="rounded-3xl border bg-gray-50 p-8">
-      <h2 className="text-lg font-semibold">Understanding Your Military Pay (LES)</h2>
-      <p className="mt-2 text-sm text-gray-600">
+      <section className="rounded-3xl border bg-gray-50 p-6 md:p-8">
+      <details>
+      <summary className="cursor-pointer list-none">
+        <span className="flex items-center justify-between">
+          <span className="text-lg font-semibold">Understanding Your Military Pay (LES) ▾</span>
+          <span className="text-xs text-gray-500">New here? Start with this</span>
+        </span>
+      </summary>
+      <p className="mt-3 text-sm text-gray-600">
         The Leave and Earnings Statement (LES) is the military version of a pay stub.
-        It shows your pay, allowances, taxes, and deductions each month.
-      </p>
-
-      <p className="mt-2 text-xs text-gray-500">
-        New to military pay? See <a href="/terms" className="underline">Terms Explained</a>.
+        It shows your pay, allowances, taxes, and deductions each month. New to military pay?
+        See <a href="/terms" className="underline">Terms Explained</a>.
       </p>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -2207,6 +2188,7 @@ export default function PayClient({
       <p className="mt-6 text-xs text-gray-500">
         Official pay information is available through DFAS and your LES.
       </p>
+      </details>
     </section>
 
       {/* Offscreen, light-themed chart used only for the PDF export (works from any tab). */}

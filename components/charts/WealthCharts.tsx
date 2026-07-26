@@ -94,12 +94,15 @@ export function GrowthChart({
   startYear,
   currentAge,
   serviceYears,
+  svgRef,
 }: {
   projection: CareerProjection;
   startBalances: { tsp: number; invest: number; savings: number };
   startYear: number;
   currentAge: number;
   serviceYears: number;
+  /** Optional ref to the SVG element, for PNG/SVG/PDF export. */
+  svgRef?: React.Ref<SVGSVGElement>;
 }) {
   const W = 920;
   const H = 400;
@@ -164,10 +167,13 @@ export function GrowthChart({
 
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
       role="img"
       aria-label="Projected balances by year, stacked by account"
-      className="block w-full touch-none select-none"
+      className="block h-auto w-full touch-none select-none"
       onPointerMove={onMove}
       onPointerLeave={() => setHover(null)}
     >

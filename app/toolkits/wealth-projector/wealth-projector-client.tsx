@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { fmtUSD0 } from "@/lib/sankey/model";
 import {
@@ -33,7 +33,15 @@ import {
 import fundPerformance from "@/data/tsp/fund-performance.json";
 import PlanFlow from "@/components/PlanFlow";
 import Explain from "@/components/Explain";
+import InfoDot from "@/components/InfoDot";
 import { loadPaySnapshot } from "@/lib/profile/handoff";
+import {
+  generateProjectionCsv,
+  generateProjectionTxt,
+  type ProjectionExport,
+} from "@/lib/export/projection";
+import { generateProjectionPdf } from "@/lib/export/projection-pdf";
+import { downloadPng, downloadSvg, svgToPngBytes } from "@/lib/sankey/export";
 
 const emptySubscribe = () => () => {};
 
@@ -154,6 +162,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [savApyPct, setSavApyPct] = useState(PERF.otherAssets.savingsApyPct);
 
   const [tab, setTab] = useState<ResultTab>("growth");
+
+  // ---- Exports (all generated in-browser) ----
+  const [reportFormat, setReportFormat] = useState<"csv" | "txt" | "pdf">("csv");
+  const [exporting, setExporting] = useState(false);
+  // Offscreen light-themed chart used for PNG/SVG/PDF export from any tab.
+  const exportChartRef = useRef<SVGSVGElement>(null);
 
   // ---- Derived ----
   const fundReturns = useMemo(() => {
@@ -292,6 +306,105 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     ? candidates
     : candidates.filter((c) => destinationOf(c.id, c.suggested) !== "skip");
   const assignedTotals = applyAssignments(candidates, assignments);
+
+  function buildProjectionExport(): ProjectionExport {
+    const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? branch;
+    return {
+      generatedOn: new Date().toISOString().slice(0, 10),
+      scenario: {
+        branchLabel,
+        track,
+        grade,
+        yos: yosNow,
+        currentAge,
+        serviceYears,
+        projectionYears,
+        endYear,
+        tspPct: contribPct,
+        brs,
+        tspReturnPct: Math.round(tspReturn * 1000) / 10,
+        invReturnPct,
+        savApyPct,
+        inflationPct,
+        payRaisePct,
+        modelPromotions,
+      },
+      promotions: projection.promotions.map((p) => ({
+        year: startYear + Math.floor(p.monthIndex / 12),
+        grade: p.toGrade,
+        competitive: p.competitive,
+      })),
+      years: projection.years.map((s) => ({
+        year: startYear + s.yearIndex,
+        age: s.age,
+        serving: s.serving,
+        grade: s.grade,
+        basePayMonthly: s.basePayMonthly,
+        tsp: s.balances.tsp,
+        invest: s.balances.invest,
+        savings: s.balances.savings,
+        total: s.total,
+        realTotal: s.realTotal,
+      })),
+      totals: {
+        final: projection.final.total,
+        finalReal: projection.final.realTotal,
+        atSeparation: projection.atSeparation?.total ?? null,
+        separationYear: serviceYears > 0 ? sepYear : null,
+        contributed: projection.totals.contributed,
+        growth: projection.totals.growth,
+        agencyMatch: projection.totals.agencyMatch,
+      },
+    };
+  }
+
+  function triggerDownload(body: BlobPart, mime: string, filename: string) {
+    const url = window.URL.createObjectURL(new Blob([body], { type: mime }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function downloadReport() {
+    setExporting(true);
+    try {
+      const data = buildProjectionExport();
+      const stem = `activepayos_WealthProjection_${grade}_${endYear}`;
+      if (reportFormat === "csv") {
+        triggerDownload(generateProjectionCsv(data), "text/csv;charset=utf-8", `${stem}.csv`);
+      } else if (reportFormat === "txt") {
+        triggerDownload(generateProjectionTxt(data), "text/plain;charset=utf-8", `${stem}.txt`);
+      } else {
+        let chartPng: Uint8Array | undefined;
+        if (exportChartRef.current) {
+          try {
+            chartPng = await svgToPngBytes(exportChartRef.current, 2, "#ffffff");
+          } catch {
+            // fall back to a chartless PDF
+          }
+        }
+        const bytes = await generateProjectionPdf(data, chartPng);
+        triggerDownload(new Uint8Array(bytes), "application/pdf", `${stem}.pdf`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function exportChartPng() {
+    if (exportChartRef.current) {
+      downloadPng(exportChartRef.current, "activepayos_wealth_projection.png", 2, "#ffffff");
+    }
+  }
+  function exportChartSvg() {
+    if (exportChartRef.current) {
+      downloadSvg(exportChartRef.current, "activepayos_wealth_projection.svg");
+    }
+  }
 
   function applyBudgetAssignments() {
     setSavMonthly(assignedTotals.savingsMonthly);
@@ -449,11 +562,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
             {/* Career path */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold">Career path</h2>
-              <p className="mt-1 text-xs text-gray-500">
-                Your projected rank sets your base pay from the DFAS tables, and base pay is what
-                the TSP percentage and BRS match are computed from.
-              </p>
+              <h2 className="text-lg font-semibold">
+                Career path{" "}
+                <InfoDot text="Your projected rank sets your base pay from the DFAS tables, and base pay is what the TSP percentage and BRS match are computed from." />
+              </h2>
               {paySnap && (
                 <p className="mt-1 rounded-xl bg-[var(--field-bg)]/50 px-2.5 py-1.5 text-[11px] text-gray-600">
                   {`Pre-filled from your Pay Calculator (${paySnap.grade} @ ${paySnap.yos} YOS) — edit anything.`}
@@ -582,12 +694,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             {/* Budget → contributions hand-off */}
             {candidates.length > 0 && (
               <div className="rounded-3xl border border-[var(--brand-blue)]/40 bg-[var(--brand-blue)]/5 p-5 shadow-sm">
-                <h2 className="text-lg font-semibold">Use your budget</h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  Point categories from your saved budget at an account below, then apply. TSP-
-                  and debt-labeled rows are skipped by default (TSP is already modeled from your
-                  pay; debt payments pay down balances, not these accounts).
-                </p>
+                <h2 className="text-lg font-semibold">
+                  Use your budget{" "}
+                  <InfoDot text="Point categories from your saved budget at an account, then apply. TSP- and debt-labeled rows are skipped by default (TSP is already modeled from your pay; debt payments pay down balances, not these accounts)." />
+                </h2>
 
                 {visibleCandidates.length === 0 ? (
                   <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-gray-600">
@@ -821,7 +931,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             {/* Taxable investments */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Investment account</h2>
+                <h2 className="text-lg font-semibold">
+                  Investment account{" "}
+                  <InfoDot
+                    text={`Brokerage / IRA money outside the TSP — e.g. an S&P 500 index fund. The ${PERF.otherAssets.sp500LongRunPct}% default ≈ the S&P 500's long-run average with dividends, before inflation; any given 5-year stretch can be far above or below it.`}
+                  />
+                </h2>
                 <span
                   className="cursor-help text-sm font-semibold"
                   title="What you're adding to this account each month while serving. Set a different after-service pace below."
@@ -829,9 +944,6 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   {fmtUSD0(invMonthly)}/mo
                 </span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Brokerage / IRA money outside the TSP — e.g. an S&amp;P 500 index fund.
-              </p>
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-gray-600">Balance</span>
@@ -892,17 +1004,16 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   </div>
                   <span>/mo after service</span>
                 </div>
-                <p className="text-xs text-gray-500">
-                  {PERF.otherAssets.sp500LongRunPct}% ≈ the S&amp;P 500&apos;s long-run average with
-                  dividends, before inflation. Any given 5-year stretch can be far above or below it.
-                </p>
               </div>
             </div>
 
             {/* Savings */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Savings</h2>
+                <h2 className="text-lg font-semibold">
+                  Savings{" "}
+                  <InfoDot text="Emergency fund and short-term goals in a high-yield savings account. Rates move with the Fed — use your bank's APY." />
+                </h2>
                 <span
                   className="cursor-help text-sm font-semibold"
                   title="What you're adding to savings each month while serving. Set a different after-service pace below."
@@ -910,9 +1021,6 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   {fmtUSD0(savMonthly)}/mo
                 </span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Emergency fund and short-term goals in a high-yield savings account.
-              </p>
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-gray-600">Balance</span>
@@ -1129,6 +1237,51 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   </div>
                 )}
               </div>
+
+              {/* Exports */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <label htmlFor="projection-format" className="sr-only">
+                  Report format
+                </label>
+                <select
+                  id="projection-format"
+                  value={reportFormat}
+                  onChange={(e) => setReportFormat(e.target.value as "csv" | "txt" | "pdf")}
+                  className="field rounded-full px-3 py-2 text-sm"
+                >
+                  <option value="csv">CSV — any spreadsheet</option>
+                  <option value="txt">Text — plain summary</option>
+                  <option value="pdf">PDF — printable, with chart</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={downloadReport}
+                  disabled={exporting}
+                  className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Assumptions, promotions, year-by-year balances, and totals in the selected format."
+                >
+                  {exporting ? "Preparing…" : "Download report"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportChartPng}
+                  className="rounded-full border px-3 py-2 text-sm font-medium hover:bg-gray-100"
+                  title="The growth chart as a shareable image."
+                >
+                  Chart PNG
+                </button>
+                <button
+                  type="button"
+                  onClick={exportChartSvg}
+                  className="rounded-full border px-3 py-2 text-sm font-medium hover:bg-gray-100"
+                  title="The growth chart as a vector file."
+                >
+                  Chart SVG
+                </button>
+                <span className="text-xs text-gray-500">
+                  Generated in your browser — nothing leaves your device.
+                </span>
+              </div>
             </div>
 
             {/* Insights */}
@@ -1186,7 +1339,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
             {/* Assumptions & sources */}
             <div className="rounded-3xl border bg-gray-50 p-5 text-xs leading-5 text-gray-600">
-              <h2 className="text-sm font-semibold text-gray-800">Assumptions &amp; data</h2>
+              <details>
+              <summary className="cursor-pointer list-none text-sm font-semibold text-gray-800">
+                Assumptions, data sources &amp; how it computes ▾
+              </summary>
               <p className="mt-2">
                 {`How it computes: your branch's typical promotion schedule sets your rank over time (see the Pay & Rank tab); rank + years of service look up base pay in the ${
                   basepay.year ?? 2026
@@ -1248,6 +1404,19 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </Link>
                 {" to fund the contributions."}
               </p>
+              </details>
+            </div>
+
+            {/* Offscreen light-themed chart used only for exports (works from any tab). */}
+            <div aria-hidden className="pointer-events-none absolute -left-[9999px] top-0 w-[920px]">
+              <GrowthChart
+                projection={projection}
+                startBalances={startBalances}
+                startYear={startYear}
+                currentAge={currentAge}
+                serviceYears={serviceYears}
+                svgRef={exportChartRef}
+              />
             </div>
           </section>
         </div>

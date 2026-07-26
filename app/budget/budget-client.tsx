@@ -48,6 +48,7 @@ import {
 } from "@/lib/export/budget-summary";
 import { generateBudgetPdf } from "@/lib/export/budget-pdf";
 import PlanFlow from "@/components/PlanFlow";
+import InfoDot from "@/components/InfoDot";
 
 type ReportFormat = "csv" | "txt" | "pdf";
 type ReportScope = "budget" | "combined" | "pay";
@@ -646,7 +647,10 @@ export default function BudgetClient() {
             {/* --------------------------- 50/30/20 coach --------------------------- */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">50/30/20 coach</h2>
+                <h2 className="text-lg font-semibold">
+                  50/30/20 coach{" "}
+                  <InfoDot text="A starter guideline: 50% of after-tax income to needs, 30% to wants, 20% to savings & debt payoff. Tap a category chip below if we sorted it into the wrong bucket." />
+                </h2>
                 {coach.afterTaxMonthly > 0 && (
                   <span
                     className="cursor-help text-xs text-gray-500"
@@ -656,10 +660,6 @@ export default function BudgetClient() {
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                A starter guideline: 50% of after-tax income to needs, 30% to wants, 20% to savings
-                &amp; debt payoff. Tap a category chip if we sorted it into the wrong bucket.
-              </p>
 
               {coach.afterTaxMonthly <= 0 ? (
                 <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -785,13 +785,12 @@ export default function BudgetClient() {
             {/* ------------------------------ TSP ------------------------------ */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">TSP (retirement)</h2>
+                <h2 className="text-lg font-semibold">
+                  TSP (retirement){" "}
+                  <InfoDot text="TSP contributions are a percent of base pay only — not BAH or BAS. Enter the percent and we do the math; it flows through the chart as its own outflow." />
+                </h2>
                 <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                TSP contributions are a percent of <strong>base pay only</strong>
-                {" — not BAH or BAS. Enter the percent and we'll do the math; it flows through the chart as its own outflow."}
-              </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-gray-600">Contribute</span>
@@ -959,7 +958,10 @@ export default function BudgetClient() {
             {/* --------------------------- Savings goals --------------------------- */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Savings goals</h2>
+                <h2 className="text-lg font-semibold">
+                  Savings goals{" "}
+                  <InfoDot text="Funded by your savings categories plus any unallocated leftover (TSP is retirement money, so it doesn't count here). An emergency fund of 3 months of essentials is the standard first goal." />
+                </h2>
                 <span
                   className="cursor-help text-sm font-semibold"
                   title="Your goal-funding pace: savings-bucket categories plus any unallocated leftover. TSP is excluded because retirement money can't fund near-term goals."
@@ -967,11 +969,6 @@ export default function BudgetClient() {
                   {fmtUSD0(goalContributionMonthly)}/mo
                 </span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Funded by your savings categories plus any unallocated leftover
-                {tspMonthly > 0 ? " (TSP is retirement money, so it doesn't count here)" : ""}.
-                An emergency fund of 3 months of essentials is the standard first goal.
-              </p>
 
               {goals.length > 0 && (
                 <div className="mt-4 space-y-4">
@@ -1123,10 +1120,9 @@ export default function BudgetClient() {
                 )}
               </div>
 
-              <p className="mt-2 text-xs text-gray-500">
-                Tip: keep housing within your BAH and make savings automatic. “Put leftover into”
-                folds the remainder into a category on the chart; the button writes it in as a real
-                amount so your budget is fully allocated.
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                Tip: keep housing within your BAH and make savings automatic.
+                <InfoDot text="'Put leftover into' folds the remainder into a category on the chart; the button writes it in as a real amount so your budget is fully allocated." />
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="text-xs text-gray-500">✓ Saved automatically to this device</span>

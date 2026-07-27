@@ -221,13 +221,13 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [iraUntilAge, setIraUntilAge] = useState(65);
   const [iraReturnPct, setIraReturnPct] = useState(PERF.otherAssets.sp500LongRunPct);
   const [iraFeePct, setIraFeePct] = useState(DEFAULT_IRA_EXPENSE_RATIO_PCT);
-  const [showIraFees, setShowIraFees] = useState(false);
 
   // ---- Post-military civilian career: assumed salary drives the 401(k)
   // (your % + employer match %), starting at separation. ----
   const [civSalary, setCivSalary] = useState(0); // expected $/yr after service; 0 = not set
   const [k401Pct, setK401Pct] = useState(6);
   const [k401MatchPct, setK401MatchPct] = useState(4);
+  const [k401Type, setK401Type] = useState<"traditional" | "roth">("traditional");
   const [k401UntilAge, setK401UntilAge] = useState(65);
   const [k401ReturnPct, setK401ReturnPct] = useState(PERF.otherAssets.sp500LongRunPct);
   const k401Monthly =
@@ -1234,7 +1234,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   {" — these grow as your pay grows (see Pay & Rank tab)."}
                 </p>
 
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                <details className="pt-1">
+                  <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
+                    {`Returns & fees — blended ≈ ${(tspReturn * 100).toFixed(1)}%/yr net`}
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-gray-600">Assumed returns</span>
                   <select
                     value={preset}
@@ -1357,6 +1362,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     )}
                   </div>
                 )}
+                  </div>
+                </details>
               </div>
             </div>
 
@@ -1422,30 +1429,6 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                       aria-label="Current IRA balance"
                     />
                   </div>
-                  <span className="text-gray-600">at</span>
-                  <input
-                    type="number"
-                    min={-20}
-                    max={30}
-                    step={0.5}
-                    value={iraReturnPct}
-                    onChange={(e) => setIraReturnPct(num(e.target.value))}
-                    className={pctInput}
-                    aria-label="Assumed IRA annual return percent, before fees"
-                  />
-                  <span className="text-gray-600">%/yr, minus</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={2}
-                    step={0.01}
-                    value={iraFeePct}
-                    onChange={(e) => setIraFeePct(Math.max(0, Math.min(2, num(e.target.value))))}
-                    className={pctInput}
-                    aria-label="IRA expense ratio / advisory fee percent per year"
-                    title="Fund expense ratio plus any advisory fee. Broad index funds at the big firms run ≈0.02–0.10%; robo/advisory services add ≈0.25–0.35%."
-                  />
-                  <span className="text-gray-600">% fees</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                   <span>Adding</span>
@@ -1511,27 +1494,51 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     {fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).
                   </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setShowIraFees((s) => !s)}
-                  className="text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
-                >
-                  {showIraFees ? "Hide" : "Typical fees at Vanguard, Schwab, Fidelity"}
-                </button>
-                {showIraFees && (
-                  <div className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
-                    <ul className="list-disc space-y-1.5 pl-4">
-                      {IRA_PROVIDER_CONTEXT.map((pvd) => (
-                        <li key={pvd.name}>
-                          <span className="font-medium">{pvd.name}:</span> index funds {pvd.indexExpenseRatioPct}
-                          {" · "}
-                          {pvd.accountFee}. {pvd.advisoryNote}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 font-medium text-gray-700">{IRA_FEE_DISCLAIMER}</p>
+                <details>
+                  <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
+                    {`Returns & fees — ${iraReturnNetPct.toFixed(2)}%/yr net of fees`}
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                      <span>Assumed return</span>
+                      <input
+                        type="number"
+                        min={-20}
+                        max={30}
+                        step={0.5}
+                        value={iraReturnPct}
+                        onChange={(e) => setIraReturnPct(num(e.target.value))}
+                        className={pctInput}
+                        aria-label="Assumed IRA annual return percent, before fees"
+                      />
+                      <span>%/yr, minus</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={iraFeePct}
+                        onChange={(e) => setIraFeePct(Math.max(0, Math.min(2, num(e.target.value))))}
+                        className={pctInput}
+                        aria-label="IRA expense ratio / advisory fee percent per year"
+                        title="Fund expense ratio plus any advisory fee. Broad index funds at the big firms run ≈0.02–0.10%; robo/advisory services add ≈0.25–0.35%."
+                      />
+                      <span>% fees</span>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
+                      <ul className="list-disc space-y-1.5 pl-4">
+                        {IRA_PROVIDER_CONTEXT.map((pvd) => (
+                          <li key={pvd.name}>
+                            <span className="font-medium">{pvd.name}:</span> index funds {pvd.indexExpenseRatioPct}
+                            {" · "}
+                            {pvd.accountFee}. {pvd.advisoryNote}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 font-medium text-gray-700">{IRA_FEE_DISCLAIMER}</p>
+                    </div>
                   </div>
-                )}
+                </details>
               </div>
               )}
             </div>
@@ -1786,7 +1793,22 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>401(k): you</span>
+                  <span>401(k):</span>
+                  <select
+                    value={k401Type}
+                    onChange={(e) => setK401Type(e.target.value as "traditional" | "roth")}
+                    className="field rounded-lg px-2 py-1 text-xs"
+                    aria-label="Civilian 401(k) tax type"
+                  >
+                    <option value="traditional">Traditional (pre-tax)</option>
+                    <option value="roth">Roth (post-tax)</option>
+                  </select>
+                  <InfoDot
+                    text={
+                      "Traditional: pre-tax now, taxed at withdrawal.\nRoth: taxed now, tax-free later.\n\nThe balance projected here is the same either way — what differs is the tax bill at withdrawal. The Roth vs Traditional card in the Trade space tab shows that comparison.\n\nEmployer match dollars are always pre-tax (Traditional), whatever you pick."
+                    }
+                  />
+                  <span>you</span>
                   <input
                     type="number"
                     min={0}
@@ -1809,7 +1831,26 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     aria-label="Employer 401(k) match percent of salary"
                     title="Typical employer matches run 3–6% of salary — check the plan's vesting schedule."
                   />
-                  <span>{`% → ${fmtUSD0(k401Monthly)}/mo, until age`}</span>
+                  <span>%</span>
+                  <button
+                    type="button"
+                    disabled={civSalary <= 0}
+                    onClick={() =>
+                      setK401Pct(
+                        Math.min(
+                          100,
+                          Math.round((TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / civSalary) * 1000) / 10
+                        )
+                      )
+                    }
+                    className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    title={`Set your percentage so this salary reaches the ${fmtUSD0(
+                      TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                    )} annual employee limit (the match doesn't count against it). Set a salary first.`}
+                  >
+                    Max
+                  </button>
+                  <span>{`→ ${fmtUSD0(k401Monthly)}/mo, until age`}</span>
                   <input
                     type="number"
                     min={currentAge}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import SankeySvg from "@/components/sankey/SankeySvg";
 import { useThemeColors } from "@/components/sankey/useThemeColors";
 import { downloadPng, downloadSvg, svgToPngBytes } from "@/lib/sankey/export";
@@ -648,6 +649,13 @@ export default function BudgetClient() {
                 Stacked
               </button>
             </span>
+            <Link
+              href="/toolkits/wealth-projector"
+              className="w-fit rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800"
+              title="Open the Wealth Projector — your saved budget's TSP, IRA, and savings pace pre-fill the projection."
+            >
+              Project my wealth →
+            </Link>
           </div>
         </div>
       </header>

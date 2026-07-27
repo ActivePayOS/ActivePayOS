@@ -275,7 +275,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [stackedLayout, setStackedLayout] = useState(false);
 
   // ---- Exports (all generated in-browser) ----
-  const [reportFormat, setReportFormat] = useState<"csv" | "txt" | "pdf">("csv");
+  const [reportFormat, setReportFormat] = useState<"csv" | "txt" | "pdf" | "xlsx">("csv");
   const [reportScope, setReportScope] = useState<"standard" | "longterm">("standard");
   const [exporting, setExporting] = useState(false);
   // Offscreen light-themed chart used for PNG/SVG/PDF export from any tab.
@@ -678,7 +678,51 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
         reportScope === "longterm"
           ? `activepayos_WealthProjection_LongTerm_${grade}_${data.scenario.endYear}`
           : `activepayos_WealthProjection_${grade}_${endYear}`;
-      if (reportFormat === "csv") {
+      if (reportFormat === "xlsx") {
+        // Live Excel model: assumptions + formula-driven projection, built by
+        // the stateless export route (same in-memory pattern as the budget's
+        // Excel export — nothing is stored server-side).
+        const res = await fetch("/api/export-projection-xlsx", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grade,
+            startYear,
+            currentAge,
+            serviceYears,
+            projectionYears,
+            inflationPct,
+            balances: {
+              tsp: tspBalance,
+              ira: iraBalanceEff,
+              invest: invBalanceEff,
+              savings: savBalanceEff,
+            },
+            returnsPct: {
+              tsp: Math.round(tspReturn * 1000) / 10,
+              ira: Math.round(iraReturnNetPct * 100) / 100,
+              k401: k401ReturnPct,
+              invest: invReturnPct,
+              savings: savApyPct,
+            },
+            monthly: {
+              tspTotal: Math.round((employeeNow + agencyNow) * 100) / 100,
+              iraServing: iraMonthlyEff,
+              iraAfter: iraMonthlyAfterEff,
+              iraUntilAge,
+              k401After: k401MonthlyEff,
+              k401UntilAge,
+              invServing: invMonthlyEff,
+              invAfter: invMonthlyAfterEff,
+              savServing: savMonthlyEff,
+              savAfter: savMonthlyAfterEff,
+            },
+          }),
+        });
+        if (!res.ok) throw new Error(`Export failed (${res.status})`);
+        const blob = await res.blob();
+        triggerDownload(blob, blob.type, `${stem}.xlsx`);
+      } else if (reportFormat === "csv") {
         triggerDownload(generateProjectionCsv(data), "text/csv;charset=utf-8", `${stem}.csv`);
       } else if (reportFormat === "txt") {
         triggerDownload(generateProjectionTxt(data), "text/plain;charset=utf-8", `${stem}.txt`);
@@ -2286,11 +2330,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   onScopeChange={(v) => setReportScope(v as "standard" | "longterm")}
                   formats={[
                     { value: "csv", label: "CSV — any spreadsheet" },
+                    { value: "xlsx", label: "Excel — live model (edit & recalc)" },
                     { value: "txt", label: "Text — plain summary" },
                     { value: "pdf", label: "PDF — printable, with chart" },
                   ]}
                   format={reportFormat}
-                  onFormatChange={(v) => setReportFormat(v as "csv" | "txt" | "pdf")}
+                  onFormatChange={(v) => setReportFormat(v as "csv" | "txt" | "pdf" | "xlsx")}
                   onDownload={downloadReport}
                   busy={exporting}
                 />

@@ -34,7 +34,7 @@ const privacySections = [
   },
   {
     title: "Spreadsheet exports",
-    text: "The one exception to browser-only processing: if you use a file export (budget spreadsheet/PDF or timeline download), the values you entered are sent to ActivePayOS once, used in memory to generate the file you download, and discarded. They are not written to disk, logged, or kept after the file is produced.",
+    text: "The one exception to browser-only processing: if you use a file export (budget spreadsheet/PDF, timeline download, or the Wealth Projector's Excel model), the values you entered are sent to ActivePayOS once, used in memory to generate the file you download, and discarded. They are not written to disk, logged, or kept after the file is produced.",
   },
   {
     title: "No accounts, no database",
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
             promotion timeline — runs entirely on your device. Your pay grade,
             dependent status, ZIP code, and budget numbers are never sent to our
             servers, stored, or logged. The single exception is the optional
-            file exports (budget spreadsheet/PDF and timeline downloads), which
+            file exports (budget spreadsheet/PDF, timeline downloads, and the Wealth Projector Excel model), which
             send your inputs to the server once to build the file you download
             and discard them immediately. We have no
             accounts, no database, no analytics, and no ads.

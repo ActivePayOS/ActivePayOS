@@ -288,18 +288,33 @@ export default function SankeySvg({
           const twoLine = labelPosition?.twoLine ?? true;
           const label = fitLabel(n.label, left ? 24 : 20);
           const shifted = Math.abs(labelY - n.cy) > 8;
+          // Anti-overlap spreading can move a label well away from its band, so
+          // every label carries a color chip and any leader line is drawn in
+          // the node's own color — the label ↔ band mapping stays readable even
+          // when a small node (SGLI) sits beside a big one (TSP).
+          const chipCy = twoLine ? labelY - 7 : labelY;
+          const textX = left ? tx - 12 : tx + 12;
           return (
             <g key={`lbl-${n.id}`}>
               {shifted && (
                 <path
-                  d={`M${left ? n.x : n.x + NODE_W},${n.cy} L${left ? tx + 4 : tx - 4},${labelY}`}
-                  stroke={colors.line}
-                  strokeWidth={1}
+                  d={`M${left ? n.x : n.x + NODE_W},${n.cy} L${left ? tx + 4 : tx - 4},${chipCy}`}
+                  stroke={n.color}
+                  strokeOpacity={0.55}
+                  strokeWidth={1.5}
                   fill="none"
                 />
               )}
+              <rect
+                x={left ? tx - 8 : tx}
+                y={chipCy - 4}
+                width={8}
+                height={8}
+                rx={2}
+                fill={n.color}
+              />
               <text
-                x={tx}
+                x={textX}
                 y={twoLine ? labelY - 3 : labelY + 4}
                 textAnchor={anchor}
                 fontSize={labelSize}
@@ -310,7 +325,7 @@ export default function SankeySvg({
                 {label !== n.label ? <title>{n.label}</title> : null}
               </text>
               {twoLine && valueSize > 0 ? (
-                <text x={tx} y={labelY + 12} textAnchor={anchor} fontSize={valueSize} fill={colors.muted}>
+                <text x={textX} y={labelY + 12} textAnchor={anchor} fontSize={valueSize} fill={colors.muted}>
                   {fmtUSD0(n.value)}
                 </text>
               ) : null}

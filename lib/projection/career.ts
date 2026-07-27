@@ -12,6 +12,7 @@
 
 import { stepsForTrack, type BranchId, type Track } from "@/data/promotion/timing";
 import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
+import { IRA_CONTRIBUTION_LIMIT_2026 } from "@/lib/pay/ira";
 import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
 import { brsAgencyPct } from "@/lib/projection/wealth";
 
@@ -107,7 +108,33 @@ export type CareerProjectionInput = {
   savMonthlyAfter: number;
   savReturn: number;
 
+  // Civilian IRA (optional). Contributions run during AND after service until
+  // the member's chosen stop age — the "keep contributing to an IRA until X"
+  // mechanic. Return should be net of fund fees (caller subtracts the expense
+  // ratio). Monthly amounts are capped at the annual IRS limit.
+  iraBalance?: number;
+  iraMonthly?: number;
+  iraMonthlyAfter?: number;
+  iraUntilAge?: number;
+  iraReturn?: number;
+
+  // Civilian 401(k) (optional): contributions start at separation and run
+  // until the chosen stop age. Include any employer match in the monthly
+  // amount — the model doesn't guess a civilian employer's formula.
+  k401Monthly?: number;
+  k401UntilAge?: number;
+  k401Return?: number;
+
   inflation: number;
+};
+
+/** Account balances tracked by the projection. */
+export type AccountBalances = {
+  tsp: number;
+  invest: number;
+  savings: number;
+  ira: number;
+  k401: number;
 };
 
 export type CareerYearSnapshot = {
@@ -118,7 +145,7 @@ export type CareerYearSnapshot = {
   grade: string;
   /** Monthly base pay at the end of the year; 0 after separation. */
   basePayMonthly: number;
-  balances: { tsp: number; invest: number; savings: number };
+  balances: AccountBalances;
   total: number;
   contributed: number;
   growth: number;
@@ -152,11 +179,23 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
   const rTsp = monthlyRate(i.tspReturn);
   const rInv = monthlyRate(i.invReturn);
   const rSav = monthlyRate(i.savReturn);
+  const rIra = monthlyRate(i.iraReturn ?? 0);
+  const rK401 = monthlyRate(i.k401Return ?? 0);
+
+  // IRA contributions honor the annual IRS limit (monthly cap here).
+  const iraCapMonthly = IRA_CONTRIBUTION_LIMIT_2026 / 12;
+  const iraMonthly = Math.min(iraCapMonthly, Math.max(0, i.iraMonthly ?? 0));
+  const iraMonthlyAfter = Math.min(iraCapMonthly, Math.max(0, i.iraMonthlyAfter ?? 0));
+  const iraUntilAge = i.iraUntilAge ?? Infinity;
+  const k401Monthly = Math.max(0, i.k401Monthly ?? 0);
+  const k401UntilAge = i.k401UntilAge ?? Infinity;
 
   let tsp = Math.max(0, i.tspBalance);
   let invest = Math.max(0, i.invBalance);
   let savings = Math.max(0, i.savBalance);
-  let contributed = tsp + invest + savings;
+  let ira = Math.max(0, i.iraBalance ?? 0);
+  let k401 = 0;
+  let contributed = tsp + invest + savings + ira;
   let agencyMatch = 0;
   let employeeTsp = 0;
 
@@ -170,11 +209,13 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
   let lastGrade = i.currentGrade;
   let lastBasePay = 0;
   let yearContributions = 0;
-  let yearStartTotal = tsp + invest + savings;
+  let yearStartTotal = tsp + invest + savings + ira;
 
   for (let m = 0; m < months; m++) {
     const serving = m < separationMonth;
     const yearIndex = Math.floor(m / 12); // 0-based during the loop
+    // Age during this month, for the IRA/401(k) contribution-stop ages.
+    const ageNow = i.currentAge + m / 12;
 
     let contribution = 0;
 
@@ -198,11 +239,16 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       );
       const agency = i.brs ? brsAgencyPct(Math.max(0, i.tspPct)) * basePay : 0;
 
+      const iraContrib = ageNow < iraUntilAge ? iraMonthly : 0;
+
       tsp = tsp * (1 + rTsp) + employee + agency;
       invest = invest * (1 + rInv) + Math.max(0, i.invMonthly);
       savings = savings * (1 + rSav) + Math.max(0, i.savMonthly);
+      ira = ira * (1 + rIra) + iraContrib;
+      k401 = k401 * (1 + rK401);
 
-      contribution = employee + agency + Math.max(0, i.invMonthly) + Math.max(0, i.savMonthly);
+      contribution =
+        employee + agency + Math.max(0, i.invMonthly) + Math.max(0, i.savMonthly) + iraContrib;
       agencyMatch += agency;
       employeeTsp += employee;
       payTimeline.push({
@@ -213,10 +259,15 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       });
     } else {
       lastBasePay = 0;
+      const iraContrib = ageNow < iraUntilAge ? iraMonthlyAfter : 0;
+      const k401Contrib = ageNow < k401UntilAge ? k401Monthly : 0;
       tsp = tsp * (1 + rTsp);
       invest = invest * (1 + rInv) + Math.max(0, i.invMonthlyAfter);
       savings = savings * (1 + rSav) + Math.max(0, i.savMonthlyAfter);
-      contribution = Math.max(0, i.invMonthlyAfter) + Math.max(0, i.savMonthlyAfter);
+      ira = ira * (1 + rIra) + iraContrib;
+      k401 = k401 * (1 + rK401) + k401Contrib;
+      contribution =
+        Math.max(0, i.invMonthlyAfter) + Math.max(0, i.savMonthlyAfter) + iraContrib + k401Contrib;
     }
 
     contributed += contribution;
@@ -224,14 +275,14 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
 
     if ((m + 1) % 12 === 0) {
       const y = yearIndex + 1;
-      const total = tsp + invest + savings;
+      const total = tsp + invest + savings + ira + k401;
       years.push({
         yearIndex: y,
         age: i.currentAge + y,
         serving: m < separationMonth,
         grade: lastGrade,
         basePayMonthly: lastBasePay,
-        balances: { tsp, invest, savings },
+        balances: { tsp, invest, savings, ira, k401 },
         total,
         contributed,
         growth: total - contributed,

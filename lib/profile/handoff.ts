@@ -25,6 +25,10 @@ export type PaySnapshot = {
   tspPct: number;
   /** Monthly gross from the calculator, for the journey strip summary. */
   grossMonthly?: number;
+  /** Current duty ZIP (BAH) — seeds the projector's Next-PCS trade space. */
+  zip?: string;
+  /** BAH with-dependents status from the calculator's family-size input. */
+  dependents?: boolean;
 };
 
 // Pay Calculator branch ids → promotion-timing branch ids.

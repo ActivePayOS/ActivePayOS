@@ -14,6 +14,16 @@ export const ACCOUNT_COLORS: Record<string, string> = {
   tsp: "#3b82f6",
   invest: "#22c55e",
   savings: "#f59e0b",
+  ira: "#8b5cf6",
+  k401: "#ec4899",
+};
+
+export const ACCOUNT_LABELS: Record<string, string> = {
+  tsp: "TSP",
+  invest: "Investments",
+  savings: "Savings",
+  ira: "IRA",
+  k401: "401(k)",
 };
 
 // One shade per pay grade for the rank band (junior → senior).
@@ -97,7 +107,7 @@ export function GrowthChart({
   svgRef,
 }: {
   projection: CareerProjection;
-  startBalances: { tsp: number; invest: number; savings: number };
+  startBalances: { tsp: number; invest: number; savings: number; ira?: number; k401?: number };
   startYear: number;
   currentAge: number;
   serviceYears: number;
@@ -112,13 +122,21 @@ export function GrowthChart({
   const MB = 44;
   const [hover, setHover] = useState<number | null>(null);
 
+  const startBal = {
+    tsp: startBalances.tsp,
+    invest: startBalances.invest,
+    savings: startBalances.savings,
+    ira: startBalances.ira ?? 0,
+    k401: startBalances.k401 ?? 0,
+  };
+  const startTotal = startBal.tsp + startBal.invest + startBal.savings + startBal.ira + startBal.k401;
   const points = [
     {
       yearIndex: 0,
       age: currentAge,
-      balances: startBalances,
-      total: startBalances.tsp + startBalances.invest + startBalances.savings,
-      realTotal: startBalances.tsp + startBalances.invest + startBalances.savings,
+      balances: startBal,
+      total: startTotal,
+      realTotal: startTotal,
     },
     ...projection.years,
   ];
@@ -127,7 +145,10 @@ export function GrowthChart({
   const x = (i: number) => ML + (i / Math.max(1, n)) * (W - ML - MR);
   const y = (v: number) => MT + (1 - v / maxTotal) * (H - MT - MB);
 
-  const keys = ["tsp", "invest", "savings"] as const;
+  const allKeys = ["tsp", "ira", "k401", "invest", "savings"] as const;
+  // Only stack/label accounts that ever hold money, so the default view stays
+  // the familiar three-account chart.
+  const keys = allKeys.filter((k) => points.some((p) => (p.balances[k] ?? 0) > 0.5));
   const stacked = points.map((p) => {
     let acc = 0;
     const levels: Record<string, { from: number; to: number }> = {};
@@ -139,7 +160,7 @@ export function GrowthChart({
     return levels;
   });
 
-  const areaPath = (key: (typeof keys)[number]) => {
+  const areaPath = (key: (typeof allKeys)[number]) => {
     const top = stacked.map((s, i) => `${x(i).toFixed(1)},${y(s[key].to).toFixed(1)}`);
     const bottom = stacked
       .map((s, i) => `${x(i).toFixed(1)},${y(s[key].from).toFixed(1)}`)
@@ -186,7 +207,7 @@ export function GrowthChart({
           </text>
         </g>
       ))}
-      {(["savings", "invest", "tsp"] as const).map((k) => (
+      {[...keys].reverse().map((k) => (
         <path key={k} d={areaPath(k)} fill={ACCOUNT_COLORS[k]} fillOpacity={0.75} />
       ))}
       <path d={`M${realLine}`} fill="none" stroke="#374151" strokeWidth={2} strokeDasharray="6 4" />
@@ -214,21 +235,15 @@ export function GrowthChart({
       )}
 
       <g transform={`translate(${ML + 8}, ${MT - 6})`} fontSize={12}>
-        {(
-          [
-            ["tsp", "TSP"],
-            ["invest", "Investments"],
-            ["savings", "Savings"],
-          ] as const
-        ).map(([k, label], i) => (
-          <g key={k} transform={`translate(${i * 110}, 0)`}>
+        {keys.map((k, i) => (
+          <g key={k} transform={`translate(${i * 96}, 0)`}>
             <rect width={10} height={10} y={2} rx={2} fill={ACCOUNT_COLORS[k]} fillOpacity={0.8} />
             <text x={14} y={11} fill="#374151">
-              {label}
+              {ACCOUNT_LABELS[k]}
             </text>
           </g>
         ))}
-        <g transform="translate(330, 0)">
+        <g transform={`translate(${keys.length * 96 + 10}, 0)`}>
           <line x1={0} x2={18} y1={7} y2={7} stroke="#374151" strokeWidth={2} strokeDasharray="6 4" />
           <text x={22} y={11} fill="#374151">
             Total in today&apos;s dollars
@@ -246,9 +261,11 @@ export function GrowthChart({
             W={W}
             lines={[
               { label: `${startYear + h.yearIndex} · age ${h.age}`, value: "" },
-              { label: "TSP", value: fmtUSD0(h.balances.tsp), color: ACCOUNT_COLORS.tsp },
-              { label: "Investments", value: fmtUSD0(h.balances.invest), color: ACCOUNT_COLORS.invest },
-              { label: "Savings", value: fmtUSD0(h.balances.savings), color: ACCOUNT_COLORS.savings },
+              ...keys.map((k) => ({
+                label: ACCOUNT_LABELS[k],
+                value: fmtUSD0(h.balances[k] ?? 0),
+                color: ACCOUNT_COLORS[k],
+              })),
               { label: "Total", value: fmtUSD0(h.total) },
               { label: "Today's $", value: fmtUSD0(h.realTotal) },
             ]}

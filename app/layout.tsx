@@ -57,7 +57,7 @@ export default function RootLayout({
               "(function(){try{var t=localStorage.getItem('apo-theme');var v=(t==='light'||t==='dark')?t:'light';document.documentElement.setAttribute('data-theme',v);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
           }}
         />
-        <div className="mx-auto max-w-6xl px-6">
+        <div className="mx-auto max-w-6xl px-6 xl:max-w-7xl 2xl:max-w-[88rem]">
           <SiteHeader />
 
           <div className="pb-16 pt-8">{children}</div>

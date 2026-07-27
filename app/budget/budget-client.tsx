@@ -16,6 +16,13 @@ import {
   type FundAllocation,
 } from "@/lib/pay/tsp";
 import {
+  IRA_CONTRIBUTION_LIMIT_2026,
+  IRA_FEE_DISCLAIMER,
+  IRA_PROVIDER_CONTEXT,
+  IRA_TYPE_LABELS,
+  type IraType,
+} from "@/lib/pay/ira";
+import {
   loadTransfer,
   clearTransfer,
   buildBudgetFromTransfer,
@@ -49,6 +56,8 @@ import {
 import { generateBudgetPdf } from "@/lib/export/budget-pdf";
 import PlanFlow from "@/components/PlanFlow";
 import InfoDot from "@/components/InfoDot";
+import HoverHint from "@/components/HoverHint";
+import ReportPanel from "@/components/ReportPanel";
 
 type ReportFormat = "csv" | "txt" | "pdf";
 type ReportScope = "budget" | "combined" | "pay";
@@ -88,6 +97,11 @@ type SavedBudget = {
   fundAlloc?: FundAllocation;
   bucketOverrides?: BucketOverrides;
   goals?: SavingsGoal[];
+  showCoach?: boolean;
+  showTspPanel?: boolean;
+  iraEnabled?: boolean;
+  iraMonthly?: number;
+  iraType?: IraType;
 };
 
 function loadSaved(): SavedBudget | null {
@@ -111,6 +125,11 @@ function loadSaved(): SavedBudget | null {
           ? parsed.bucketOverrides
           : undefined,
       goals: Array.isArray(parsed.goals) ? parsed.goals.filter(isSavingsGoal) : undefined,
+      showCoach: typeof parsed.showCoach === "boolean" ? parsed.showCoach : undefined,
+      showTspPanel: typeof parsed.showTspPanel === "boolean" ? parsed.showTspPanel : undefined,
+      iraEnabled: typeof parsed.iraEnabled === "boolean" ? parsed.iraEnabled : undefined,
+      iraMonthly: typeof parsed.iraMonthly === "number" ? parsed.iraMonthly : undefined,
+      iraType: parsed.iraType === "roth" || parsed.iraType === "traditional" ? parsed.iraType : undefined,
     };
   } catch {
     return null;
@@ -162,6 +181,31 @@ export default function BudgetClient() {
   );
   const [showFunds, setShowFunds] = useState(false);
 
+  // Panel toggles. The 50/30/20 coach can be switched off like TSP. The TSP
+  // panel defaults to collapsed when the pay import already configured TSP —
+  // that avoids prompting for something the member set on the Pay page.
+  const [showCoach, setShowCoach] = useState<boolean>(() => loadSaved()?.showCoach ?? true);
+  const [showTspPanel, setShowTspPanel] = useState<boolean>(() => {
+    const t = loadTransfer();
+    if (t) return t.deductions.tsp > 0 ? false : true;
+    return loadSaved()?.showTspPanel ?? true;
+  });
+  // TSP settings carried in from the Pay Calculator (for the collapsed note).
+  const [importedTsp] = useState(() => {
+    const t = loadTransfer();
+    return t && t.deductions.tsp > 0
+      ? { pct: t.deductions.tspPct, type: t.deductions.tspType, monthly: t.deductions.tsp }
+      : null;
+  });
+
+  // Civilian IRA (optional): a fixed monthly contribution that flows through
+  // the chart like TSP and counts toward the savings bucket. Kept simple —
+  // fees/returns are modeled in the Wealth Projector, which prefills from this.
+  const [iraEnabled, setIraEnabled] = useState<boolean>(() => loadSaved()?.iraEnabled ?? false);
+  const [iraMonthly, setIraMonthly] = useState<number>(() => loadSaved()?.iraMonthly ?? 0);
+  const [iraType, setIraType] = useState<IraType>(() => loadSaved()?.iraType ?? "roth");
+  const [showIraContext, setShowIraContext] = useState(false);
+
   // How expense outflows are ordered in the chart: as entered, largest-first, or
   // smallest-first. Editor list order is untouched.
   const [expenseOrder, setExpenseOrder] = useState<"custom" | "desc" | "asc">("custom");
@@ -170,6 +214,9 @@ export default function BudgetClient() {
   // behind `mounted`, so there is no hydration mismatch.
   const [transfer] = useState(() => loadTransfer());
   const [transferDismissed, setTransferDismissed] = useState(false);
+  // Stacked pushes the chart below the editor at full width (editor cards
+  // reflow into columns); side-by-side is the classic 360px editor rail.
+  const [stackedLayout, setStackedLayout] = useState(false);
   const [importMode, setImportMode] = useState<TransferMode>("bysource");
   const [importedNote, setImportedNote] = useState<string | null>(() => {
     const t = loadTransfer();
@@ -205,35 +252,77 @@ export default function BudgetClient() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ income, expenses, tspPct, tspBaseId, fundAlloc, bucketOverrides, goals })
+        JSON.stringify({
+          income,
+          expenses,
+          tspPct,
+          tspBaseId,
+          fundAlloc,
+          bucketOverrides,
+          goals,
+          showCoach,
+          showTspPanel,
+          iraEnabled,
+          iraMonthly,
+          iraType,
+        })
       );
     } catch {
       // storage blocked; ignore
     }
-  }, [mounted, income, expenses, tspPct, tspBaseId, fundAlloc, bucketOverrides, goals]);
+  }, [
+    mounted,
+    income,
+    expenses,
+    tspPct,
+    tspBaseId,
+    fundAlloc,
+    bucketOverrides,
+    goals,
+    showCoach,
+    showTspPanel,
+    iraEnabled,
+    iraMonthly,
+    iraType,
+  ]);
 
   // Resolve the catch-all category against the rows that actually exist.
   const captureExists = expenses.some((e) => e.id === captureInto);
   const captureId = captureExists ? captureInto : null;
 
   // TSP contribution: a % of a chosen income (most people know the %, not the $).
+  // Switching the panel off zeroes the percentage-based flow (imported TSP
+  // expense rows are separate and unaffected).
   const tspBase = income.find((i) => i.id === tspBaseId) ?? income[0];
-  const tspMonthly = Math.max(0, tspBase?.amount ?? 0) * tspPct;
+  const tspMonthly = showTspPanel ? Math.max(0, tspBase?.amount ?? 0) * tspPct : 0;
   const tspAnnual = tspMonthly * 12;
   const tspPctToMax =
     TSP_ELECTIVE_DEFERRAL_LIMIT_2026 > 0 ? tspAnnual / TSP_ELECTIVE_DEFERRAL_LIMIT_2026 : 0;
   const fundTotal = TSP_FUNDS.reduce((a, f) => a + (fundAlloc[f.key] || 0), 0);
 
+  // Civilian IRA contribution (fixed monthly $).
+  const iraMonthlyEff = iraEnabled ? Math.max(0, iraMonthly) : 0;
+  const iraAnnual = iraMonthlyEff * 12;
+  const iraPctToMax =
+    IRA_CONTRIBUTION_LIMIT_2026 > 0 ? iraAnnual / IRA_CONTRIBUTION_LIMIT_2026 : 0;
+
   const visibleExpenseTotal = expenses.reduce((a, e) => a + (e.amount > 0 ? e.amount : 0), 0);
 
-  // TSP flows through the Sankey as its own outflow when contributing.
-  const expensesForGraph = useMemo<BudgetItem[]>(
-    () =>
-      tspMonthly > 0
-        ? [...expenses, { id: "__tsp__", label: `TSP (${Math.round(tspPct * 100)}%)`, amount: tspMonthly }]
-        : expenses,
-    [expenses, tspMonthly, tspPct]
-  );
+  // TSP and IRA flow through the Sankey as their own outflows when contributing.
+  const expensesForGraph = useMemo<BudgetItem[]>(() => {
+    const extra: BudgetItem[] = [];
+    if (tspMonthly > 0) {
+      extra.push({ id: "__tsp__", label: `TSP (${Math.round(tspPct * 100)}%)`, amount: tspMonthly });
+    }
+    if (iraMonthlyEff > 0) {
+      extra.push({
+        id: "__ira__",
+        label: `IRA (${iraType === "roth" ? "Roth" : "Traditional"})`,
+        amount: iraMonthlyEff,
+      });
+    }
+    return extra.length > 0 ? [...expenses, ...extra] : expenses;
+  }, [expenses, tspMonthly, tspPct, iraMonthlyEff, iraType]);
 
   // Chart-only ordering of the expense outflows (doesn't touch the editor list).
   const orderedExpensesForGraph = useMemo<BudgetItem[]>(() => {
@@ -258,9 +347,12 @@ export default function BudgetClient() {
   const capturedLabel = expenses.find((e) => e.id === captureId)?.label;
 
   // ---- 50/30/20 coach ----
+  // TSP + IRA both count toward the savings bucket (real saving, just not
+  // expense rows).
+  const retirementMonthly = tspMonthly + iraMonthlyEff;
   const coach = useMemo(
-    () => computeCoach(graph.totalIncome, expenses, tspMonthly, bucketOverrides),
-    [graph.totalIncome, expenses, tspMonthly, bucketOverrides]
+    () => computeCoach(graph.totalIncome, expenses, retirementMonthly, bucketOverrides),
+    [graph.totalIncome, expenses, retirementMonthly, bucketOverrides]
   );
 
   // ---- Savings goals ----
@@ -295,6 +387,11 @@ export default function BudgetClient() {
     setFundAlloc(DEFAULT_FUND_ALLOCATION);
     setBucketOverrides({});
     setGoals([]);
+    setShowCoach(true);
+    setShowTspPanel(true);
+    setIraEnabled(false);
+    setIraMonthly(0);
+    setIraType("roth");
     setCoachNote(null);
     setImportedNote(null);
     setTransferDismissed(true);
@@ -309,7 +406,7 @@ export default function BudgetClient() {
   }
 
   function handleAutoBalance() {
-    const result = autoBalance(graph.totalIncome, expenses, tspMonthly, bucketOverrides, () => {
+    const result = autoBalance(graph.totalIncome, expenses, retirementMonthly, bucketOverrides, () => {
       idCounter.current += 1;
       return `row-${idCounter.current}`;
     });
@@ -352,8 +449,10 @@ export default function BudgetClient() {
     setIncome(inc);
     setExpenses(exp);
     // Deductions (incl. TSP) are imported as their own expense rows, so switch
-    // off the percentage-based TSP section to avoid double-counting.
+    // off the percentage-based TSP section to avoid double-counting — and keep
+    // the panel collapsed so it doesn't read as a second TSP prompt.
     setTspPct(0);
+    if (transfer.deductions.tsp > 0) setShowTspPanel(false);
     setCaptureInto("");
     setImportMode(mode);
     setImportedNote(describeImport(transfer, mode));
@@ -385,6 +484,13 @@ export default function BudgetClient() {
       ]);
     }
     setCaptureInto("");
+  }
+
+  // Sweep the unallocated leftover into the civilian IRA contribution.
+  function sweepLeftoverToIra() {
+    if (leftover <= 0) return;
+    setIraEnabled(true);
+    setIraMonthly((prev) => Math.round(Math.max(0, prev) + leftover));
   }
 
   // Set the TSP % that lands on the annual elective-deferral limit, so the user
@@ -504,13 +610,45 @@ export default function BudgetClient() {
               Planning estimate only — the numbers here are whatever you enter. Verify pay figures
               against your LES and myPay.
             </p>
+            <HoverHint className="mt-1" />
           </div>
-          <span
-            className="w-fit rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700"
-            title="Your numbers stay in your browser. Nothing is sent to a server."
-          >
-            🔒 Private — runs entirely in your browser
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <span
+              className="w-fit rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700"
+              title="Your numbers stay in your browser. Nothing is sent to a server."
+            >
+              🔒 Private — runs entirely in your browser
+            </span>
+            <span
+              className="hidden items-center rounded-full border p-1 text-xs lg:inline-flex"
+              role="group"
+              aria-label="Layout"
+              title="Side-by-side keeps the editor next to the chart; stacked gives the chart the full width."
+            >
+              <button
+                type="button"
+                onClick={() => setStackedLayout(false)}
+                className={`rounded-full px-3 py-1 font-medium transition ${
+                  !stackedLayout
+                    ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Side by side
+              </button>
+              <button
+                type="button"
+                onClick={() => setStackedLayout(true)}
+                className={`rounded-full px-3 py-1 font-medium transition ${
+                  stackedLayout
+                    ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Stacked
+              </button>
+            </span>
+          </div>
         </div>
       </header>
 
@@ -584,16 +722,26 @@ export default function BudgetClient() {
                 </span>
               </div>
               {importedNote && (
-                <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-gray-600">
+                <p className="mt-3 rounded-xl border bg-white px-3 py-2 text-xs text-gray-600">
                   {importedNote}
                 </p>
               )}
             </div>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div
+            className={
+              stackedLayout ? "space-y-6" : "grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]"
+            }
+          >
           {/* ------------------------------ Editor ------------------------------ */}
-          <section className="space-y-6">
+          <section
+            className={
+              stackedLayout
+                ? "gap-6 md:columns-2 xl:columns-3 [&>*]:mb-6 [&>*]:break-inside-avoid"
+                : "space-y-6"
+            }
+          >
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Income</h2>
@@ -646,22 +794,43 @@ export default function BudgetClient() {
 
             {/* --------------------------- 50/30/20 coach --------------------------- */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">
                   50/30/20 coach{" "}
-                  <InfoDot text="A starter guideline: 50% of after-tax income to needs, 30% to wants, 20% to savings & debt payoff. Tap a category chip below if we sorted it into the wrong bucket." />
+                  <InfoDot text="A starter guideline: 50% of after-tax income to needs, 30% to wants, 20% to savings & debt payoff. Tap a category chip below if we sorted it into the wrong bucket. Toggle the coach off if you'd rather budget without it." />
                 </h2>
-                {coach.afterTaxMonthly > 0 && (
-                  <span
-                    className="cursor-help text-xs text-gray-500"
-                    title="Your total income minus the tax/FICA rows — the denominator the 50/30/20 percentages are measured against."
+                <div className="flex items-center gap-2">
+                  {showCoach && coach.afterTaxMonthly > 0 && (
+                    <span
+                      className="cursor-help text-xs text-gray-500"
+                      title="Your total income minus the tax/FICA rows — the denominator the 50/30/20 percentages are measured against."
+                    >
+                      after-tax {fmtUSD0(coach.afterTaxMonthly)}/mo
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showCoach}
+                    onClick={() => setShowCoach((v) => !v)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      showCoach
+                        ? "border-emerald-600/60 bg-emerald-50 text-emerald-700"
+                        : "text-gray-500 hover:text-gray-900"
+                    }`}
+                    title="Turn the 50/30/20 coach on or off"
                   >
-                    after-tax {fmtUSD0(coach.afterTaxMonthly)}/mo
-                  </span>
-                )}
+                    {showCoach ? "On" : "Off"}
+                  </button>
+                </div>
               </div>
 
-              {coach.afterTaxMonthly <= 0 ? (
+              {!showCoach ? (
+                <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  Coach is off — your budget is unchanged. Toggle it on to measure your categories
+                  against the 50/30/20 guideline.
+                </p>
+              ) : coach.afterTaxMonthly <= 0 ? (
                 <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
                   Add your income above and the coach will measure your budget against the
                   50/30/20 guideline.
@@ -752,6 +921,11 @@ export default function BudgetClient() {
                         TSP {fmtUSD0(tspMonthly)}/mo (savings)
                       </span>
                     )}
+                    {iraMonthlyEff > 0 && (
+                      <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                        IRA {fmtUSD0(iraMonthlyEff)}/mo (savings)
+                      </span>
+                    )}
                   </div>
                   {coach.offTopTotal > 0 && (
                     <p className="mt-2 text-[11px] text-gray-400">
@@ -784,14 +958,44 @@ export default function BudgetClient() {
 
             {/* ------------------------------ TSP ------------------------------ */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">
                   TSP (retirement){" "}
-                  <InfoDot text="TSP contributions are a percent of base pay only — not BAH or BAS. Enter the percent and we do the math; it flows through the chart as its own outflow." />
+                  <InfoDot text="TSP contributions are a percent of base pay only — not BAH or BAS. Enter the percent and we do the math; it flows through the chart as its own outflow. If your pay import already includes TSP as an expense row, leave this off to avoid double-counting." />
                 </h2>
-                <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>
+                <div className="flex items-center gap-2">
+                  {showTspPanel && <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showTspPanel}
+                    onClick={() => setShowTspPanel((v) => !v)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      showTspPanel
+                        ? "border-emerald-600/60 bg-emerald-50 text-emerald-700"
+                        : "text-gray-500 hover:text-gray-900"
+                    }`}
+                    title="Turn the percentage-based TSP section on or off"
+                  >
+                    {showTspPanel ? "On" : "Off"}
+                  </button>
+                </div>
               </div>
 
+              {!showTspPanel && (
+                <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  {importedTsp
+                    ? `Already configured on the Pay Calculator (${Math.round(
+                        importedTsp.pct * 100
+                      )}% ${importedTsp.type}, ${fmtUSD0(
+                        importedTsp.monthly
+                      )}/mo) and imported as an expense row — no need to set it twice. Toggle on only to model a different percentage here.`
+                    : "TSP is off. Toggle on to model a percentage-of-base-pay contribution."}
+                </p>
+              )}
+
+              {showTspPanel && (
+              <>
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-gray-600">Contribute</span>
                 <div className="field flex items-center rounded-lg px-2 py-1">
@@ -952,6 +1156,171 @@ export default function BudgetClient() {
                     target retirement date.
                   </p>
                 </div>
+              )}
+              </>
+              )}
+            </div>
+
+            {/* --------------------------- Civilian IRA --------------------------- */}
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">
+                  Civilian IRA (optional){" "}
+                  <InfoDot text="An Individual Retirement Account you open yourself at a brokerage — separate from the TSP. A common home for leftover money after expenses. Flows through the chart as its own outflow and counts toward the savings bucket." />
+                </h2>
+                <div className="flex items-center gap-2">
+                  {iraEnabled && <span className="text-sm font-semibold">{fmtUSD0(iraMonthlyEff)}/mo</span>}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={iraEnabled}
+                    onClick={() => setIraEnabled((v) => !v)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      iraEnabled
+                        ? "border-emerald-600/60 bg-emerald-50 text-emerald-700"
+                        : "text-gray-500 hover:text-gray-900"
+                    }`}
+                    title="Turn the civilian IRA contribution on or off"
+                  >
+                    {iraEnabled ? "On" : "Off"}
+                  </button>
+                </div>
+              </div>
+
+              {!iraEnabled ? (
+                <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  Toggle on to route part of your budget{leftover > 0 ? ` (like your ${fmtUSD0(leftover)} leftover)` : ""} into a
+                  Roth or Traditional IRA at a brokerage of your choice.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-gray-600">Contribute</span>
+                    <div className="field flex items-center rounded-lg px-2 py-1">
+                      <span className="text-gray-500">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={25}
+                        value={iraMonthly === 0 ? "" : iraMonthly}
+                        placeholder="0"
+                        onChange={(e) => {
+                          const v = e.target.value === "" ? 0 : Number(e.target.value);
+                          setIraMonthly(Number.isFinite(v) ? Math.max(0, v) : 0);
+                        }}
+                        className="w-20 bg-transparent text-right outline-none"
+                        aria-label="Monthly IRA contribution"
+                      />
+                    </div>
+                    <span className="text-gray-600">/mo into a</span>
+                    <select
+                      value={iraType}
+                      onChange={(e) => setIraType(e.target.value as IraType)}
+                      className="field rounded-lg px-2 py-1"
+                      aria-label="IRA type"
+                    >
+                      {(Object.keys(IRA_TYPE_LABELS) as IraType[]).map((t) => (
+                        <option key={t} value={t}>
+                          {IRA_TYPE_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setIraMonthly(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
+                      className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
+                      title="Set the monthly contribution that reaches the 2026 IRA annual limit."
+                    >
+                      Max
+                    </button>
+                    {leftover > 0 && (
+                      <button
+                        type="button"
+                        onClick={sweepLeftoverToIra}
+                        className="rounded-lg border border-emerald-600/60 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                        title="Add your unallocated leftover (income − expenses) to the monthly IRA contribution."
+                      >
+                        + Sweep {fmtUSD0(leftover)} leftover
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Annual IRA limit progress */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">2026 IRA annual limit</span>
+                      <span className="text-gray-500">
+                        {fmtUSD0(iraAnnual)} / {fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026)}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className="h-2 rounded-full"
+                        style={{
+                          width: `${Math.min(100, iraPctToMax * 100)}%`,
+                          backgroundColor:
+                            iraPctToMax > 1 ? "#ef4444" : iraPctToMax >= 0.95 ? "#f59e0b" : "#22c55e",
+                        }}
+                      />
+                    </div>
+                    {iraPctToMax > 1 && (
+                      <p className="mt-1 text-xs text-red-600">
+                        Over the annual IRA limit by {fmtUSD0(iraAnnual - IRA_CONTRIBUTION_LIMIT_2026)} —
+                        contributions above the limit trigger an excise tax unless withdrawn.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowIraContext((s) => !s)}
+                    className="mt-4 text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
+                  >
+                    {showIraContext ? "Hide" : "Show"} typical fees &amp; returns at large firms
+                  </button>
+                  {showIraContext && (
+                    <div className="mt-3 space-y-2 text-xs text-gray-600">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[420px] text-left">
+                          <thead>
+                            <tr className="border-b text-[11px] text-gray-500">
+                              <th className="py-1 font-medium">Firm</th>
+                              <th className="py-1 font-medium">Index-fund expense ratio</th>
+                              <th className="py-1 font-medium">Account fee</th>
+                              <th className="py-1 font-medium">Advisory / robo</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {IRA_PROVIDER_CONTEXT.map((pvd) => (
+                              <tr key={pvd.name} className="border-b last:border-0 align-top">
+                                <td className="py-1.5 font-medium">{pvd.name}</td>
+                                <td className="py-1.5">{pvd.indexExpenseRatioPct}</td>
+                                <td className="py-1.5">{pvd.accountFee}</td>
+                                <td className="py-1.5">{pvd.advisoryNote}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p>
+                        A broad stock index fund has averaged roughly 10%/yr over the long run
+                        (before inflation) — but expected returns are assumptions, not promises, and
+                        any given year can be far above or below.
+                      </p>
+                      <p className="font-medium text-gray-700">{IRA_FEE_DISCLAIMER}</p>
+                    </div>
+                  )}
+
+                  <p className="mt-3 text-xs text-gray-500">
+                    See what this grows into — fees, Roth vs Traditional, and all —{" "}
+                    <a
+                      href="/toolkits/wealth-projector"
+                      className="font-medium underline underline-offset-2 hover:text-gray-900"
+                    >
+                      in the Wealth Projector →
+                    </a>
+                  </p>
+                </>
               )}
             </div>
 
@@ -1189,81 +1558,36 @@ export default function BudgetClient() {
             </div>
 
             {/* -------------------- Budget / combined report -------------------- */}
-            <div className="mt-6 rounded-2xl border p-4">
-              <h3 className="text-sm font-semibold">Download a report</h3>
-              <p className="mt-1 text-xs text-gray-500">
-                Export your budget as a spreadsheet, text, or printable PDF — generated entirely in
-                your browser.
-              </p>
-
-              {transfer && (
-                <div className="mt-3 flex flex-wrap items-center gap-1 rounded-xl border p-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setReportScope("budget")}
-                    className={`rounded-full px-3 py-1 font-medium transition ${
-                      reportScope === "budget"
-                        ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    Budget only
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReportScope("combined")}
-                    className={`rounded-full px-3 py-1 font-medium transition ${
-                      reportScope === "combined"
-                        ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    Combined (pay + budget)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReportScope("pay")}
-                    className={`rounded-full px-3 py-1 font-medium transition ${
-                      reportScope === "pay"
-                        ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    Pay breakdown only
-                  </button>
-                </div>
-              )}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <label htmlFor="report-format" className="sr-only">
-                  Report format
-                </label>
-                <select
-                  id="report-format"
-                  value={reportFormat}
-                  onChange={(e) => setReportFormat(e.target.value as ReportFormat)}
-                  className="field rounded-full px-3 py-2 text-sm"
-                >
-                  <option value="csv">CSV — any spreadsheet</option>
-                  <option value="txt">Text — plain summary</option>
-                  <option value="pdf">PDF — printable</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={downloadReport}
-                  disabled={reporting}
-                  className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {reporting ? "Preparing…" : "Download report"}
-                </button>
-                <span className="text-xs text-gray-500">
-                  {reportScope === "combined" && transfer
-                    ? "One file with your pay summary and full budget."
-                    : reportScope === "pay" && transfer
-                    ? "Just the Pay Calculator breakdown sheet, rebuilt from your imported pay."
-                    : "Your income, expenses, and leftover."}
-                </span>
-              </div>
+            <div className="mt-6">
+              <ReportPanel
+                scopes={
+                  transfer
+                    ? [
+                        {
+                          value: "budget",
+                          label: "Budget only",
+                          hint: "Your income, expenses, and leftover.",
+                        },
+                        {
+                          value: "combined",
+                          label: "Combined (pay + budget)",
+                          hint: "One file with your pay summary and full budget.",
+                        },
+                        {
+                          value: "pay",
+                          label: "Pay breakdown only",
+                          hint: "Just the Pay Calculator sheet, rebuilt from your imported pay.",
+                        },
+                      ]
+                    : undefined
+                }
+                scope={reportScope}
+                onScopeChange={(v) => setReportScope(v as ReportScope)}
+                format={reportFormat}
+                onFormatChange={(v) => setReportFormat(v as ReportFormat)}
+                onDownload={downloadReport}
+                busy={reporting}
+              />
             </div>
           </section>
         </div>

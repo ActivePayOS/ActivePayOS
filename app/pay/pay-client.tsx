@@ -26,9 +26,17 @@ import {
 } from "@/lib/pay/civilian";
 import { SPECIAL_PAY_PRESETS, SPECIAL_PAY_COLORS, type SpecialPay } from "@/lib/pay/special-pays";
 import { BRANCHES, getBranch, type BranchId } from "@/lib/pay/branches";
+import {
+  stepsForTrack,
+  type BranchId as PromoBranchId,
+  type Track,
+} from "@/data/promotion/timing";
 import InfoDot from "@/components/InfoDot";
+import ReportPanel from "@/components/ReportPanel";
 import { buildPaySummary } from "@/lib/export/summary";
 import { generatePayPdf } from "@/lib/export/pdf";
+import HoverHint from "@/components/HoverHint";
+import { analyzeStationScenario, OCONUS } from "@/lib/pay/state-tax-analysis";
 import {
   getStateTaxContext,
   stateTaxContexts,
@@ -122,6 +130,16 @@ const ADDL_MEDICARE_RATE = 0.009; // extra 0.9% on wages above $200k/yr
 const ADDL_MEDICARE_THRESHOLD_MONTHLY = 200000 / 12;
 
 const STATE_RESIDENCY_OPTIONS = stateTaxContexts.map((item) => item.state);
+
+// lib/pay/branches ids → data/promotion/timing ids.
+const PROMO_BRANCH: Record<BranchId, PromoBranchId> = {
+  army: "army",
+  usmc: "marines",
+  navy: "navy",
+  usaf: "airforce",
+  ussf: "spaceforce",
+  uscg: "coastguard",
+};
 
 const GRADES: PayGrade[] = [
   "O-1", "O-2", "O-3", "O-4", "O-5", "O-6", "O-7", "O-8", "O-9", "O-10",
@@ -305,6 +323,9 @@ export default function PayClient({
   const [tspType, setTspType] = useState<TspType>("traditional");
   const [sgliMonthly, setSgliMonthly] = useState<number>(26);
   const [stateTaxPct, setStateTaxPct] = useState<number>(0);
+  // Once the member hand-edits the state rate we stop auto-filling it from
+  // the state-of-residence suggestion.
+  const stateTaxTouched = useRef(false);
 
   // Special & incentive pays
   const [specialPays, setSpecialPays] = useState<SpecialPay[]>([]);
@@ -314,7 +335,52 @@ export default function PayClient({
   // Rank / scenario comparator
   const [showCompare, setShowCompare] = useState(true);
   const [bGrade, setBGrade] = useState<PayGrade>("O-2");
-  const [bYos, setBYos] = useState<number>(0);
+  // Manual YOS override for the comparison; null = follow the promotion
+  // schedule (reset whenever the compared grade changes).
+  const [bYosManual, setBYosManual] = useState<number | null>(null);
+
+  // When the compared grade appears in the branch promotion schedule, project
+  // the YOS the member would actually have when pinning it on (never earlier
+  // than today), then map that to the DFAS pay-table step used for base pay.
+  const compareYosInfo = useMemo(() => {
+    if (isSpecialGrade(bGrade)) return null;
+    const promoBranch: PromoBranchId = branch ? PROMO_BRANCH[branch] : "army";
+    const bTrack: Track = isEnlisted(bGrade) ? "enlisted" : "officer";
+    const sameTrack = isEnlisted(bGrade) === isEnlisted(grade);
+    const steps = stepsForTrack(promoBranch, bTrack);
+    const step = steps.find((s) => s.toGrade === bGrade);
+    if (!step || !sameTrack) return null;
+    const typicalPinOnYos = step.tisMonths / 12;
+    // Promotion schedules run on time since entry/commissioning, but pay YOS
+    // can outrun them (prior enlisted service, academy time, late promotion).
+    // Keep the member's extra years: shift the whole timeline by the gap
+    // between their actual YOS and the typical TIS for their CURRENT grade,
+    // so "when I make it, I'll be at X years TOS" stays true.
+    const currentGradeTisYears =
+      (steps.find((s) => s.toGrade === grade)?.tisMonths ?? 0) / 12;
+    if (typicalPinOnYos <= currentGradeTisYears) return null; // comparing at/below current grade
+    const offsetYears = Math.max(0, yos - currentGradeTisYears);
+    const projectedYos = typicalPinOnYos + offsetYears;
+    const supported = YOS_OPTIONS.map((o) => o.value).filter(
+      (v) => v <= projectedYos && hasBasePayForYos(basepay, year, bGrade, v)
+    );
+    const stepYos = supported.length
+      ? Math.max(...supported)
+      : firstSupportedYos(basepay, year, bGrade, 0);
+    return {
+      typicalPinOnYos,
+      projectedYos,
+      offsetYears,
+      stepYos,
+      competitive: !!step.competitive,
+    };
+  }, [branch, grade, yos, bGrade, basepay, year]);
+
+  const bYosAuto = compareYosInfo?.stepYos ?? yos;
+  const bYosCandidate = bYosManual ?? bYosAuto;
+  const bYos = hasBasePayForYos(basepay, year, bGrade, bYosCandidate)
+    ? bYosCandidate
+    : firstSupportedYos(basepay, year, bGrade, bYosCandidate);
 
   const cadet = isCadet(grade);
   // Cadets/midshipmen draw no housing or food allowance.
@@ -361,6 +427,23 @@ export default function PayClient({
     }
     return "This ZIP is not available in the 2026 local BAH rate data used here. Check the ZIP, try ZIP+4 only if valid, or verify with the official BAH calculator.";
   }, [effectiveReceivesBah, zip, bahLookup.status]);
+
+  // Where you're stationed, for the state-tax analysis. Defaults to the state
+  // the BAH ZIP resolves to (MHA codes start with the state abbreviation);
+  // override with the select in the State tax tab.
+  const [dutyLocationOverride, setDutyLocationOverride] = useState<string>("");
+  const dutyStateFromZip = useMemo(() => {
+    const ab = bahLookup.mha?.slice(0, 2);
+    return stateTaxContexts.find((s) => s.abbreviation === ab)?.state ?? "";
+  }, [bahLookup.mha]);
+  const dutyLocation = dutyLocationOverride || dutyStateFromZip;
+  const stationAnalysis = useMemo(
+    () =>
+      stateOfLegalResidence && dutyLocation
+        ? analyzeStationScenario(stateOfLegalResidence, dutyLocation)
+        : null,
+    [stateOfLegalResidence, dutyLocation]
+  );
 
   const specialTaxable = specialPays.reduce((a, s) => a + (s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
   const specialNonTax = specialPays.reduce((a, s) => a + (!s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
@@ -409,8 +492,10 @@ export default function PayClient({
       yos,
       tspPct,
       grossMonthly: total,
+      zip: bahLookup.normalizedZip ?? undefined,
+      dependents,
     });
-  }, [gradeSelected, grade, branch, yos, tspPct, total]);
+  }, [gradeSelected, grade, branch, yos, tspPct, total, bahLookup.normalizedZip, dependents]);
 
   const denomTotal = total > 0 ? total : 1;
   const pctBase = (basePay / denomTotal) * 100;
@@ -785,6 +870,7 @@ export default function PayClient({
               2026 base pay, BAS, and BAH data last verified on{" "}
               {formatPayDataLastVerified()}.
             </p>
+            <HoverHint className="mt-1" />
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 md:mt-0">
@@ -817,67 +903,8 @@ export default function PayClient({
             <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-700">
               Data: Base Pay + BAS + BAH (Live)
             </span>
-
-            <label className="sr-only" htmlFor="export-format">
-              Export format
-            </label>
-            <select
-              id="export-format"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as ExportFormat)}
-              className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-              title="Choose the file type to download"
-            >
-              {EXPORT_FORMATS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              onClick={downloadBudget}
-              disabled={exporting || !gradeSelected}
-              className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-              title={
-                gradeSelected
-                  ? "Download your pay summary in the selected format."
-                  : "Select your rank first to download a pay summary."
-              }
-            >
-              {exporting ? "Preparing..." : "Download"}
-            </button>
-
-            {exportError && (
-              <p
-                role="alert"
-                className="basis-full text-sm text-red-600 md:text-right"
-              >
-                {exportError}
-              </p>
-            )}
           </div>
         </div>
-
-        <details className="mt-4 text-xs text-gray-500">
-          <summary className="cursor-pointer font-medium text-gray-700 hover:text-[var(--brand-blue)]">
-            What&apos;s in each export?
-          </summary>
-          <div className="mt-2 space-y-2">
-            <p>
-              <strong>CSV</strong>, <strong>PDF</strong>, and <strong>Text</strong> give a minimalist
-              summary of just your pay numbers (monthly + annual) — handy for importing elsewhere,
-              printing, or filing with your LES. The PDF is a clean, printable summary with your
-              pay-flow chart.
-            </p>
-            <p>
-              <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot; tab that
-              pre-fills your pay and suggests a hybrid plan (Housing about BAH, Food about BAS, Savings
-              target %). You can edit everything.
-            </p>
-          </div>
-        </details>
       </section>
 
       <div className={splitLayout ? "grid gap-6 lg:grid-cols-2 lg:items-start" : "space-y-10"}>
@@ -1013,13 +1040,22 @@ export default function PayClient({
             <div>
               <label htmlFor="state-of-legal-residence" className="block text-sm font-medium">
                 State of Legal Residence{" "}
-                <InfoDot text="Used for state-specific tax context. To include state tax in the take-home estimate, set your rate in the take-home section below." />
+                <InfoDot text="Sets state-specific tax context and auto-suggests a state tax rate for the take-home estimate below (you can override it). Your state of legal residence — not your duty station — is what matters for military pay." />
               </label>
               <select
                 id="state-of-legal-residence"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={stateOfLegalResidence}
-                onChange={(e) => setStateOfLegalResidence(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setStateOfLegalResidence(next);
+                  // Pre-fill a reasonable planning rate for the take-home
+                  // estimate unless the member already set their own.
+                  const ctx = getStateTaxContext(next);
+                  if (ctx && !stateTaxTouched.current) {
+                    setStateTaxPct(ctx.suggestedRatePct / 100);
+                  }
+                }}
               >
                 <option value="">Select state</option>
                 {STATE_RESIDENCY_OPTIONS.map((state) => (
@@ -1100,12 +1136,21 @@ export default function PayClient({
           <div className="mt-8 border-t pt-6">
             <h2 className="text-lg font-semibold">
               Estimate your take-home (optional){" "}
-              <InfoDot text="Adds federal & state tax, FICA, TSP, and SGLI to estimate what actually lands in your bank account. Educational estimate — your LES is the source of truth." />
+              <InfoDot
+                text={
+                  "Adds federal & state tax, FICA, TSP, and SGLI to estimate what actually lands in your bank account.\n\nEducational estimate — your LES is the source of truth."
+                }
+              />
             </h2>
             <div className={`mt-6 grid items-start gap-4 ${takeHomeGridClass}`}>
               <div>
                 <label htmlFor="filing-status" className="block text-sm font-medium">
-                  Tax filing status
+                  Tax filing status{" "}
+                  <InfoDot
+                    text={
+                      "The status from your federal tax return — it sets which brackets and standard deduction the estimate uses.\n\nSingle: unmarried.\nMarried filing jointly: combines both spouses' income and doubles the standard deduction."
+                    }
+                  />
                 </label>
                 <select
                   id="filing-status"
@@ -1120,7 +1165,12 @@ export default function PayClient({
 
               <div>
                 <label htmlFor="tsp-pct" className="block text-sm font-medium">
-                  TSP contribution
+                  TSP contribution{" "}
+                  <InfoDot
+                    text={
+                      "The Thrift Savings Plan is the military's 401(k) — retirement investing taken straight from your pay.\n\nYou contribute a percent of base pay.\n\nUnder BRS, contributing at least 5% collects the full government match — an extra 5% of free pay."
+                    }
+                  />
                 </label>
                 <div className="mt-1 flex items-center gap-2">
                   <div className="field flex flex-1 items-center rounded-xl px-3 py-2">
@@ -1179,7 +1229,12 @@ export default function PayClient({
 
               <div>
                 <label htmlFor="tsp-type" className="block text-sm font-medium">
-                  TSP type
+                  TSP type{" "}
+                  <InfoDot
+                    text={
+                      "Traditional: pre-tax now, taxed when you withdraw in retirement.\nRoth: taxed now, withdrawals are tax-free later.\n\nEarly-career members in low brackets often favor Roth — you lock in today's low rate.\n\nThe BRS match is always Traditional either way."
+                    }
+                  />
                 </label>
                 <select
                   id="tsp-type"
@@ -1194,7 +1249,12 @@ export default function PayClient({
 
               <div>
                 <label htmlFor="sgli" className="block text-sm font-medium">
-                  SGLI coverage
+                  SGLI coverage{" "}
+                  <InfoDot
+                    text={
+                      "Servicemembers' Group Life Insurance — low-cost life insurance deducted from pay.\n\nYou're auto-enrolled at the $500,000 maximum ($26/mo, including the $1 TSGLI injury rider).\n\nElect less or decline in milConnect. Most members keep the max."
+                    }
+                  />
                 </label>
                 <select
                   id="sgli"
@@ -1212,7 +1272,14 @@ export default function PayClient({
 
               <div>
                 <label htmlFor="state-tax-pct" className="block text-sm font-medium">
-                  Estimated state tax rate
+                  Estimated state tax rate{" "}
+                  <InfoDot
+                    text={`A flat planning rate applied to your taxable wages.\n\nOnly your State of Legal Residence can tax military pay — never the duty-station state.\n\n${
+                      stateTaxContext
+                        ? stateTaxContext.rateBlurb
+                        : "Pick your state of legal residence above and we'll suggest a rate."
+                    }\n\nThe "Stationed vs. home" analysis in the State tax tab can refine it.`}
+                  />
                 </label>
                 <div className="field mt-1 flex items-center rounded-xl px-3 py-2">
                   <input
@@ -1222,20 +1289,28 @@ export default function PayClient({
                     max={20}
                     step={0.5}
                     value={Math.round(stateTaxPct * 1000) / 10}
-                    onChange={(e) =>
-                      setStateTaxPct(Math.max(0, Math.min(20, Number(e.target.value) || 0)) / 100)
-                    }
+                    onChange={(e) => {
+                      stateTaxTouched.current = true;
+                      setStateTaxPct(Math.max(0, Math.min(20, Number(e.target.value) || 0)) / 100);
+                    }}
                     className="w-full bg-transparent outline-none"
                   />
                   <span className="text-sm text-gray-500">%</span>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {stateTaxContext?.category === "no_broad_wage_income_tax"
-                    ? `${stateTaxContext.state} has no broad income tax — 0% is typical.`
-                    : stateOfLegalResidence
-                    ? "Rough effective rate on military wages (see State Tax Context below)."
-                    : "Pick your state of legal residence above for guidance."}
-                </p>
+                {stateTaxContext &&
+                  Math.abs(stateTaxPct * 100 - stateTaxContext.suggestedRatePct) >= 0.05 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stateTaxTouched.current = true;
+                        setStateTaxPct(stateTaxContext.suggestedRatePct / 100);
+                      }}
+                      className="mt-1 text-xs font-medium underline underline-offset-2 hover:text-gray-900"
+                    >
+                      Use suggested ~{stateTaxContext.suggestedRatePct}% for{" "}
+                      {stateTaxContext.abbreviation}
+                    </button>
+                  )}
               </div>
             </div>
           </div>
@@ -1584,7 +1659,9 @@ export default function PayClient({
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border p-4">
               <div className="text-sm font-medium">Taxable Income</div>
-              <div className="mt-1 text-xs text-gray-500">Usually just base pay for this calculator.</div>
+              <div className="mt-1 text-xs text-gray-500">
+                Base pay + taxable special pays — the portion subject to income tax.
+              </div>
               <div className="mt-3 text-2xl font-bold">{fmtUSD(taxableIncomeMonthly)}</div>
               <div className="mt-1 text-xs text-gray-500">Annual {fmtUSD0(annual.taxableIncome)}</div>
             </div>
@@ -1881,11 +1958,8 @@ export default function PayClient({
                     <select
                       value={bGrade}
                       onChange={(e) => {
-                        const nextGrade = e.target.value as PayGrade;
-                        setBGrade(nextGrade);
-                        if (!hasBasePayForYos(basepay, year, nextGrade, bYos)) {
-                          setBYos(firstSupportedYos(basepay, year, nextGrade, bYos));
-                        }
+                        setBGrade(e.target.value as PayGrade);
+                        setBYosManual(null);
                       }}
                       className="field mt-1 w-full rounded-lg px-2 py-1.5 text-sm"
                     >
@@ -1900,7 +1974,7 @@ export default function PayClient({
                     <label className="block text-xs font-medium text-gray-600">Years of service</label>
                     <select
                       value={bYos}
-                      onChange={(e) => setBYos(Number(e.target.value))}
+                      onChange={(e) => setBYosManual(Number(e.target.value))}
                       className="field mt-1 w-full rounded-lg px-2 py-1.5 text-sm"
                     >
                       {YOS_OPTIONS.map((o) => {
@@ -1919,7 +1993,7 @@ export default function PayClient({
                       onClick={() => {
                         const i = GRADES.indexOf(grade);
                         if (i >= 0 && i < GRADES.length - 1) setBGrade(GRADES[i + 1]);
-                        setBYos(yos);
+                        setBYosManual(null);
                       }}
                       className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
                     >
@@ -1928,38 +2002,73 @@ export default function PayClient({
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-xl border text-sm">
-                  <div className="grid grid-cols-4 gap-2 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
-                    <span />
-                    <span className="text-right">You ({grade})</span>
-                    <span className="text-right">{bGrade}</span>
-                    <span className="text-right">Δ</span>
-                  </div>
-                  {[
-                    { label: "Gross / mo", a: total, b: compare.bGross },
-                    { label: "Take-home / mo", a: takeHome.takeHomeMonthly, b: compare.bTakeHome.takeHomeMonthly },
-                    { label: "Gross / yr", a: total * 12, b: compare.bGross * 12 },
-                  ].map((row) => {
-                    const d = row.b - row.a;
-                    return (
-                      <div key={row.label} className="grid grid-cols-4 gap-2 border-t px-3 py-2">
-                        <span className="text-gray-600">{row.label}</span>
-                        <span className="text-right">{fmtUSD0(row.a)}</span>
-                        <span className="text-right">{fmtUSD0(row.b)}</span>
-                        <span
-                          className="text-right font-medium"
-                          style={{ color: d < 0 ? "#ef4444" : "#15803d" }}
+                {compareYosInfo && bYosManual === null && (
+                  <p className="text-xs text-gray-500">
+                    {bGrade} typically comes{" "}
+                    {compareYosInfo.typicalPinOnYos % 1 === 0
+                      ? compareYosInfo.typicalPinOnYos
+                      : compareYosInfo.typicalPinOnYos.toFixed(1)}{" "}
+                    years into a career
+                    {compareYosInfo.competitive ? " (board- or exam-driven, not guaranteed)" : ""}
+                    {compareYosInfo.offsetYears >= 0.25
+                      ? ` — with your extra ${
+                          compareYosInfo.offsetYears % 1 === 0
+                            ? compareYosInfo.offsetYears
+                            : compareYosInfo.offsetYears.toFixed(1)
+                        } years of service, you'd pin it on around ${
+                          compareYosInfo.projectedYos % 1 === 0
+                            ? compareYosInfo.projectedYos
+                            : compareYosInfo.projectedYos.toFixed(1)
+                        } years TOS, so the comparison uses the "${
+                          YOS_OPTIONS.find((o) => o.value === bYos)?.label ?? bYos
+                        }" pay step.`
+                      : ` — so the comparison uses the "${
+                          YOS_OPTIONS.find((o) => o.value === bYos)?.label ?? bYos
+                        }" pay step you'd hold then, not today's.`}{" "}
+                    Change &quot;Years of service&quot; to use your own timeline.
+                  </p>
+                )}
+
+                {/* Horizontal scroll on narrow phones so the four columns never crush. */}
+                <div className="overflow-x-auto rounded-xl border text-sm">
+                  <div className="min-w-[420px]">
+                    <div className="grid grid-cols-[minmax(110px,1.2fr)_1fr_1fr_1fr] gap-2 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                      <span />
+                      <span className="text-right">You ({grade})</span>
+                      <span className="text-right">{bGrade}</span>
+                      <span className="text-right">Δ</span>
+                    </div>
+                    {[
+                      { label: "Gross / mo", a: total, b: compare.bGross },
+                      { label: "Take-home / mo", a: takeHome.takeHomeMonthly, b: compare.bTakeHome.takeHomeMonthly },
+                      { label: "Gross / yr", a: total * 12, b: compare.bGross * 12 },
+                    ].map((row) => {
+                      const d = row.b - row.a;
+                      return (
+                        <div
+                          key={row.label}
+                          className="grid grid-cols-[minmax(110px,1.2fr)_1fr_1fr_1fr] gap-2 border-t px-3 py-2"
                         >
-                          {d >= 0 ? "+" : "−"}
-                          {fmtUSD0(Math.abs(d))}
-                        </span>
-                      </div>
-                    );
-                  })}
+                          <span className="whitespace-nowrap text-gray-600">{row.label}</span>
+                          <span className="text-right">{fmtUSD0(row.a)}</span>
+                          <span className="text-right">{fmtUSD0(row.b)}</span>
+                          <span
+                            className="text-right font-medium"
+                            style={{ color: d < 0 ? "#ef4444" : "#15803d" }}
+                          >
+                            {d >= 0 ? "+" : "−"}
+                            {fmtUSD0(Math.abs(d))}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500">
                   Same duty location, dependents, TSP, and special pays — only grade and years of
-                  service change. Pick any grade to compare a promotion, or officer vs. enlisted.
+                  service change. Years of service auto-advance to the compared rank&apos;s typical
+                  pin-on point (override with the select); pick any grade to compare a promotion,
+                  or officer vs. enlisted.
                 </p>
 
                 <div className="overflow-hidden rounded-2xl border">
@@ -2068,6 +2177,91 @@ export default function PayClient({
 
           {resultsView === "statetax" && (
             <>
+          {/* Home state × duty station: who can actually tax your military pay */}
+          <div className="mt-6 rounded-2xl border bg-white p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-medium">
+                Stationed vs. home{" "}
+                <InfoDot
+                  text={
+                    "Only your state of legal residence can tax military pay — the SCRA bars a duty-station state from taxing a nonresident servicemember.\n\nSeveral home states also give a break while you're stationed away.\n\nPlanning estimate, not tax advice."
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-600">Stationed in</span>
+                <select
+                  value={dutyLocationOverride}
+                  onChange={(e) => setDutyLocationOverride(e.target.value)}
+                  className="field rounded-lg px-2 py-1 text-sm"
+                  aria-label="Where you're stationed"
+                >
+                  <option value="">
+                    {dutyStateFromZip ? `From duty ZIP (${dutyStateFromZip})` : "Select…"}
+                  </option>
+                  {STATE_RESIDENCY_OPTIONS.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                  <option value={OCONUS}>{OCONUS}</option>
+                </select>
+              </div>
+            </div>
+
+            {!stateOfLegalResidence ? (
+              <p className="mt-3 text-sm leading-6 text-gray-600">
+                Pick your State of Legal Residence in the inputs above — the analysis compares it
+                against where you&apos;re stationed.
+              </p>
+            ) : !dutyLocation ? (
+              <p className="mt-3 text-sm leading-6 text-gray-600">
+                Enter a duty ZIP or pick where you&apos;re stationed to see who can tax your pay.
+              </p>
+            ) : stationAnalysis ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-sm font-semibold">{stationAnalysis.verdict}</p>
+                <p className="text-sm leading-6 text-gray-600">{stationAnalysis.explanation}</p>
+                {stationAnalysis.conditions && (
+                  <details className="text-xs leading-5 text-gray-600">
+                    <summary className="cursor-pointer font-medium text-gray-700">
+                      Conditions that must hold
+                    </summary>
+                    <p className="mt-1">{stationAnalysis.conditions}</p>
+                  </details>
+                )}
+                <details className="text-xs leading-5 text-gray-600">
+                  <summary className="cursor-pointer font-medium text-gray-700">
+                    What this doesn&apos;t cover
+                  </summary>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {stationAnalysis.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                </details>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stateTaxTouched.current = true;
+                      setStateTaxPct(stationAnalysis.suggestedRatePct / 100);
+                    }}
+                    className="rounded-full border px-3 py-1.5 text-xs font-medium hover:bg-gray-100"
+                    title="Sets the estimated state tax rate in the take-home section to this planning rate."
+                  >
+                    Use {stationAnalysis.suggestedRatePct}% in the take-home estimate
+                  </button>
+                  {dutyStateFromZip && !dutyLocationOverride && (
+                    <span className="text-xs text-gray-400">
+                      Duty state read from your BAH ZIP — override it with the select above.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <div className="mt-6 rounded-2xl border bg-white p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -2077,7 +2271,7 @@ export default function PayClient({
                 </div>
               </div>
               <span className="w-fit rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
-                Not included in total
+                Feeds the take-home estimate via the rate you set above
               </span>
             </div>
 
@@ -2132,6 +2326,37 @@ export default function PayClient({
           </div>
             </>
           )}
+
+          {/* Standardized report download — lives with the results it exports. */}
+          <div className="mt-6">
+            <ReportPanel
+              title="Download your pay report"
+              formats={EXPORT_FORMATS}
+              format={format}
+              onFormatChange={(v) => setFormat(v as ExportFormat)}
+              onDownload={downloadBudget}
+              busy={exporting}
+              error={exportError}
+            />
+            <details className="mt-3 text-xs text-gray-500">
+              <summary className="cursor-pointer font-medium text-gray-700 hover:text-[var(--brand-blue)]">
+                What&apos;s in each export?
+              </summary>
+              <div className="mt-2 space-y-2">
+                <p>
+                  <strong>CSV</strong>, <strong>PDF</strong>, and <strong>Text</strong> give a
+                  minimalist summary of just your pay numbers (monthly + annual) — handy for
+                  importing elsewhere, printing, or filing with your LES. The PDF is a clean,
+                  printable summary with your pay-flow chart.
+                </p>
+                <p>
+                  <strong>Excel</strong> gives the full budget workbook: a &quot;Start Here&quot;
+                  tab that pre-fills your pay and suggests a hybrid plan (Housing about BAH, Food
+                  about BAS, Savings target %). You can edit everything.
+                </p>
+              </div>
+            </details>
+          </div>
           </>
           )}
         </section>

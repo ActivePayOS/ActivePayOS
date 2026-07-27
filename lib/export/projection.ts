@@ -11,10 +11,48 @@ export type ProjectionYearLine = {
   grade: string;
   basePayMonthly: number;
   tsp: number;
+  ira: number;
+  k401: number;
   invest: number;
   savings: number;
   total: number;
   realTotal: number;
+};
+
+/** Fund/management fee disclosure carried into the report. */
+export type FeeSection = {
+  tspExpenseRatioPct: number;
+  iraExpenseRatioPct: number | null;
+  /** Estimated dollars lost to fees over the horizon (fee-free minus net). */
+  estimatedFeeDrag: number;
+  notes: string[];
+};
+
+/** Roth vs. Traditional trade-space summary carried into the report. */
+export type RothSection = {
+  monthlyContribution: number;
+  yearsContributing: number;
+  yearsToWithdrawal: number;
+  annualReturnPct: number;
+  taxRateNowPct: number;
+  taxRateAtWithdrawalPct: number;
+  preTaxBalance: number;
+  taxPaidUpFront: number; // Roth path
+  deferredTaxBill: number; // Traditional path
+  rothAfterTax: number;
+  tradAfterTax: number;
+  winner: "roth" | "traditional" | "even";
+  advantage: number;
+};
+
+/** Long-term analysis extras (decade milestones, sustainable income). */
+export type LongTermSection = {
+  milestones: { age: number; year: number; total: number; realTotal: number }[];
+  /** 4%-rule style sustainable annual withdrawal at the horizon. */
+  fourPercentAnnual: number;
+  fourPercentMonthly: number;
+  fourPercentMonthlyReal: number;
+  notes: string[];
 };
 
 export type ProjectionExport = {
@@ -33,6 +71,12 @@ export type ProjectionExport = {
     tspReturnPct: number;
     invReturnPct: number;
     savApyPct: number;
+    iraMonthly?: number;
+    iraUntilAge?: number;
+    iraReturnPct?: number;
+    k401Monthly?: number;
+    k401UntilAge?: number;
+    k401ReturnPct?: number;
     inflationPct: number;
     payRaisePct: number;
     modelPromotions: boolean;
@@ -48,7 +92,18 @@ export type ProjectionExport = {
     growth: number;
     agencyMatch: number;
   };
+  fees?: FeeSection;
+  rothTradeoff?: RothSection;
+  longTerm?: LongTermSection;
 };
+
+/** Whether any year holds IRA / 401(k) money (drives optional columns). */
+export function activeExtraAccounts(p: ProjectionExport): { ira: boolean; k401: boolean } {
+  return {
+    ira: p.years.some((y) => y.ira > 0.5),
+    k401: p.years.some((y) => y.k401 > 0.5),
+  };
+}
 
 // -------------------------------------------------------------------- CSV ---
 
@@ -88,6 +143,18 @@ export function generateProjectionCsv(p: ProjectionExport): string {
   lines.push(row(["Assumed TSP return (%/yr)", s.tspReturnPct]));
   lines.push(row(["Assumed investment return (%/yr)", s.invReturnPct]));
   lines.push(row(["Savings APY (%)", s.savApyPct]));
+  if (s.iraMonthly && s.iraMonthly > 0) {
+    lines.push(row(["Civilian IRA contribution (USD/mo)", formatPlain(s.iraMonthly)]));
+    if (s.iraUntilAge) lines.push(row(["IRA contributions until age", s.iraUntilAge]));
+    if (typeof s.iraReturnPct === "number")
+      lines.push(row(["Assumed IRA return, net of fees (%/yr)", s.iraReturnPct]));
+  }
+  if (s.k401Monthly && s.k401Monthly > 0) {
+    lines.push(row(["Civilian 401(k) after service (USD/mo, incl. employer match)", formatPlain(s.k401Monthly)]));
+    if (s.k401UntilAge) lines.push(row(["401(k) contributions until age", s.k401UntilAge]));
+    if (typeof s.k401ReturnPct === "number")
+      lines.push(row(["Assumed 401(k) return (%/yr)", s.k401ReturnPct]));
+  }
   lines.push(row(["Inflation assumption (%/yr)", s.inflationPct]));
   lines.push(row(["Assumed annual military pay raise (%)", s.payRaisePct]));
   lines.push(row(["Typical promotions modeled", s.modelPromotions ? "Yes" : "No"]));
@@ -102,6 +169,7 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     }
   }
 
+  const extras = activeExtraAccounts(p);
   lines.push("");
   lines.push(
     row([
@@ -111,6 +179,8 @@ export function generateProjectionCsv(p: ProjectionExport): string {
       "Grade",
       "Base pay (monthly USD)",
       "TSP (USD)",
+      ...(extras.ira ? ["IRA (USD)"] : []),
+      ...(extras.k401 ? ["401(k) (USD)"] : []),
       "Investments (USD)",
       "Savings (USD)",
       "Total (USD)",
@@ -126,6 +196,8 @@ export function generateProjectionCsv(p: ProjectionExport): string {
         yLine.serving ? yLine.grade : "",
         yLine.serving ? formatPlain(yLine.basePayMonthly) : "",
         formatPlain(yLine.tsp),
+        ...(extras.ira ? [formatPlain(yLine.ira)] : []),
+        ...(extras.k401 ? [formatPlain(yLine.k401)] : []),
         formatPlain(yLine.invest),
         formatPlain(yLine.savings),
         formatPlain(yLine.total),
@@ -144,6 +216,57 @@ export function generateProjectionCsv(p: ProjectionExport): string {
   lines.push(row(["Total contributed (incl. starting balances)", formatPlain(p.totals.contributed)]));
   lines.push(row(["Market growth", formatPlain(p.totals.growth)]));
   lines.push(row(["BRS agency match received", formatPlain(p.totals.agencyMatch)]));
+
+  if (p.fees) {
+    lines.push("");
+    lines.push(row(["Fund management fees", ""]));
+    lines.push(row(["TSP expense ratio (%/yr)", p.fees.tspExpenseRatioPct]));
+    if (p.fees.iraExpenseRatioPct !== null) {
+      lines.push(row(["IRA expense ratio (%/yr)", p.fees.iraExpenseRatioPct]));
+    }
+    lines.push(row(["Estimated dollars lost to fees over the horizon", formatPlain(p.fees.estimatedFeeDrag)]));
+    for (const n of p.fees.notes) lines.push(row([n]));
+  }
+
+  if (p.rothTradeoff) {
+    const r = p.rothTradeoff;
+    lines.push("");
+    lines.push(row(["Roth vs Traditional trade space", ""]));
+    lines.push(row(["Monthly contribution (same both ways)", formatPlain(r.monthlyContribution)]));
+    lines.push(row(["Years contributing / to withdrawal", `${r.yearsContributing} / ${r.yearsToWithdrawal}`]));
+    lines.push(row(["Assumed return (%/yr)", r.annualReturnPct]));
+    lines.push(row(["Marginal tax rate today (%)", r.taxRateNowPct]));
+    lines.push(row(["Assumed tax rate at withdrawal (%)", r.taxRateAtWithdrawalPct]));
+    lines.push(row(["Pre-tax balance at horizon (same both ways)", formatPlain(r.preTaxBalance)]));
+    lines.push(row(["Roth: taxes paid up front", formatPlain(r.taxPaidUpFront)]));
+    lines.push(row(["Roth: after-tax value at horizon", formatPlain(r.rothAfterTax)]));
+    lines.push(row(["Traditional: deferred tax bill at withdrawal", formatPlain(r.deferredTaxBill)]));
+    lines.push(row(["Traditional: after-tax value at horizon", formatPlain(r.tradAfterTax)]));
+    lines.push(
+      row([
+        "Verdict",
+        r.winner === "even"
+          ? "Effectively even at these tax rates"
+          : `${r.winner === "roth" ? "Roth" : "Traditional"} ahead by ~${formatPlain(r.advantage)} (net of the up-front tax)`,
+      ])
+    );
+  }
+
+  if (p.longTerm) {
+    lines.push("");
+    lines.push(row(["Long-term analysis", ""]));
+    lines.push(row(["Age", "Year", "Total (USD)", "Total (today's USD)"]));
+    for (const m of p.longTerm.milestones) {
+      lines.push(row([m.age, m.year, formatPlain(m.total), formatPlain(m.realTotal)]));
+    }
+    lines.push(row(["Sustainable withdrawal at ~4%/yr (annual)", formatPlain(p.longTerm.fourPercentAnnual)]));
+    lines.push(row(["Sustainable withdrawal at ~4%/yr (monthly)", formatPlain(p.longTerm.fourPercentMonthly)]));
+    lines.push(
+      row(["Sustainable monthly withdrawal in today's dollars", formatPlain(p.longTerm.fourPercentMonthlyReal)])
+    );
+    for (const n of p.longTerm.notes) lines.push(row([n]));
+  }
+
   lines.push("");
   lines.push(
     row([
@@ -173,6 +296,22 @@ export function generateProjectionTxt(p: ProjectionExport): string {
     kv("TSP", `${Math.round(s.tspPct * 100)}% of base pay${s.brs ? " + BRS match" : ""} at ${s.tspReturnPct}%/yr`)
   );
   lines.push(kv("Investments / Savings returns", `${s.invReturnPct}%/yr / ${s.savApyPct}% APY`));
+  if (s.iraMonthly && s.iraMonthly > 0) {
+    lines.push(
+      kv(
+        "Civilian IRA",
+        `${formatUsd(s.iraMonthly)}/mo until age ${s.iraUntilAge ?? "-"} at ${s.iraReturnPct ?? "-"}%/yr (net of fees)`
+      )
+    );
+  }
+  if (s.k401Monthly && s.k401Monthly > 0) {
+    lines.push(
+      kv(
+        "Civilian 401(k) after service",
+        `${formatUsd(s.k401Monthly)}/mo (incl. match) until age ${s.k401UntilAge ?? "-"} at ${s.k401ReturnPct ?? "-"}%/yr`
+      )
+    );
+  }
   lines.push(kv("Inflation / annual pay raise", `${s.inflationPct}% / ${s.payRaisePct}%`));
   if (p.promotions.length > 0) {
     lines.push(
@@ -183,9 +322,21 @@ export function generateProjectionTxt(p: ProjectionExport): string {
       )
     );
   }
+  const extras = activeExtraAccounts(p);
   lines.push(div);
   lines.push(
-    ["Year", "Age", "Grade", "TSP", "Invest", "Savings", "Total", "Today's $"]
+    [
+      "Year",
+      "Age",
+      "Grade",
+      "TSP",
+      ...(extras.ira ? ["IRA"] : []),
+      ...(extras.k401 ? ["401k"] : []),
+      "Invest",
+      "Savings",
+      "Total",
+      "Today's $",
+    ]
       .map((h, i) => (i < 3 ? h.padEnd(i === 0 ? 6 : 5) : h.padStart(10)))
       .join("")
   );
@@ -196,6 +347,8 @@ export function generateProjectionTxt(p: ProjectionExport): string {
         String(yLine.age).padEnd(5),
         (yLine.serving ? yLine.grade : "-").padEnd(5),
         formatUsd(yLine.tsp).padStart(10),
+        ...(extras.ira ? [formatUsd(yLine.ira).padStart(10)] : []),
+        ...(extras.k401 ? [formatUsd(yLine.k401).padStart(10)] : []),
         formatUsd(yLine.invest).padStart(10),
         formatUsd(yLine.savings).padStart(10),
         formatUsd(yLine.total).padStart(10),
@@ -212,6 +365,60 @@ export function generateProjectionTxt(p: ProjectionExport): string {
   lines.push(kv("Total contributed", formatUsd(p.totals.contributed)));
   lines.push(kv("Market growth", formatUsd(p.totals.growth)));
   lines.push(kv("BRS agency match received", formatUsd(p.totals.agencyMatch)));
+
+  if (p.fees) {
+    lines.push(div);
+    lines.push("FUND MANAGEMENT FEES");
+    lines.push(kv("TSP expense ratio", `${p.fees.tspExpenseRatioPct}%/yr (~$${(p.fees.tspExpenseRatioPct * 10).toFixed(2)} per $1,000/yr)`));
+    if (p.fees.iraExpenseRatioPct !== null) {
+      lines.push(kv("IRA expense ratio", `${p.fees.iraExpenseRatioPct}%/yr`));
+    }
+    lines.push(kv("Est. dollars lost to fees over horizon", formatUsd(p.fees.estimatedFeeDrag)));
+    for (const n of p.fees.notes) lines.push(`  - ${n}`);
+  }
+
+  if (p.rothTradeoff) {
+    const r = p.rothTradeoff;
+    lines.push(div);
+    lines.push("ROTH VS TRADITIONAL TRADE SPACE");
+    lines.push(
+      kv(
+        "Scenario",
+        `${formatUsd(r.monthlyContribution)}/mo for ${r.yearsContributing} yrs, withdrawn after ${r.yearsToWithdrawal} yrs at ${r.annualReturnPct}%/yr`
+      )
+    );
+    lines.push(kv("Tax rate today / at withdrawal", `${r.taxRateNowPct}% / ${r.taxRateAtWithdrawalPct}%`));
+    lines.push(kv("Pre-tax balance (same both ways)", formatUsd(r.preTaxBalance)));
+    lines.push(kv("Roth: taxes paid up front", formatUsd(r.taxPaidUpFront)));
+    lines.push(kv("Roth: after-tax at horizon", formatUsd(r.rothAfterTax)));
+    lines.push(kv("Traditional: deferred tax bill", formatUsd(r.deferredTaxBill)));
+    lines.push(kv("Traditional: after-tax at horizon", formatUsd(r.tradAfterTax)));
+    lines.push(
+      kv(
+        "Verdict",
+        r.winner === "even"
+          ? "Effectively even at these tax rates"
+          : `${r.winner === "roth" ? "Roth" : "Traditional"} ahead by ~${formatUsd(r.advantage)}`
+      )
+    );
+  }
+
+  if (p.longTerm) {
+    lines.push(div);
+    lines.push("LONG-TERM ANALYSIS");
+    for (const m of p.longTerm.milestones) {
+      lines.push(kv(`Age ${m.age} (${m.year})`, `${formatUsd(m.total)}  (${formatUsd(m.realTotal)} today's $)`));
+    }
+    lines.push(kv("~4%-rule withdrawal (annual)", formatUsd(p.longTerm.fourPercentAnnual)));
+    lines.push(
+      kv(
+        "~4%-rule withdrawal (monthly)",
+        `${formatUsd(p.longTerm.fourPercentMonthly)}  (${formatUsd(p.longTerm.fourPercentMonthlyReal)} today's $)`
+      )
+    );
+    for (const n of p.longTerm.notes) lines.push(`  - ${n}`);
+  }
+
   lines.push(div);
   lines.push("Planning estimate only. Assumed returns are not guarantees; markets vary");
   lines.push("year to year. Verify data at tsp.gov and DFAS.");

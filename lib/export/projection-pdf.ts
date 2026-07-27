@@ -4,7 +4,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { formatUsd } from "./summary";
-import type { ProjectionExport } from "./projection";
+import { activeExtraAccounts, type ProjectionExport } from "./projection";
 
 const PAGE_W = 612; // US Letter
 const PAGE_H = 792;
@@ -113,6 +113,16 @@ export async function generateProjectionPdf(
   const assumptions = [
     `TSP: ${Math.round(s.tspPct * 100)}% of base pay${s.brs ? " + BRS match (1% auto, up to 4% match)" : ""}, ${s.tspReturnPct}%/yr assumed return`,
     `Investments: ${s.invReturnPct}%/yr  -  Savings: ${s.savApyPct}% APY  -  Inflation: ${s.inflationPct}%/yr  -  Military pay raise: ${s.payRaisePct}%/yr`,
+    ...(s.iraMonthly && s.iraMonthly > 0
+      ? [
+          `Civilian IRA: ${formatUsd(s.iraMonthly)}/mo until age ${s.iraUntilAge ?? "-"}, ${s.iraReturnPct ?? "-"}%/yr net of fees`,
+        ]
+      : []),
+    ...(s.k401Monthly && s.k401Monthly > 0
+      ? [
+          `Civilian 401(k) after service: ${formatUsd(s.k401Monthly)}/mo (incl. employer match) until age ${s.k401UntilAge ?? "-"}, ${s.k401ReturnPct ?? "-"}%/yr`,
+        ]
+      : []),
     s.modelPromotions
       ? `Typical ${s.branchLabel} promotions modeled${
           p.promotions.length > 0
@@ -139,12 +149,23 @@ export async function generateProjectionPdf(
   // ---- year table ----
   ensureSpace(48);
   page.drawText("YEAR BY YEAR", { x: M, y, size: 9, font: f.bold, color: MUTED });
-  const C = { age: M + 44, grade: M + 78, tsp: 268, invest: 342, sav: 412, total: 486, real: RIGHT };
-  rightText(page, "TSP", C.tsp, y, 8, f.bold, MUTED);
-  rightText(page, "INVEST", C.invest, y, 8, f.bold, MUTED);
-  rightText(page, "SAVINGS", C.sav, y, 8, f.bold, MUTED);
-  rightText(page, "TOTAL", C.total, y, 8, f.bold, MUTED);
-  rightText(page, "TODAY'S $", C.real, y, 8, f.bold, MUTED);
+  const extras = activeExtraAccounts(p);
+  // Numeric columns are laid out dynamically so IRA/401(k) appear only when used.
+  const numericHeads: { key: "tsp" | "ira" | "k401" | "invest" | "savings" | "total" | "realTotal"; head: string }[] = [
+    { key: "tsp", head: "TSP" },
+    ...(extras.ira ? [{ key: "ira" as const, head: "IRA" }] : []),
+    ...(extras.k401 ? [{ key: "k401" as const, head: "401(K)" }] : []),
+    { key: "invest", head: "INVEST" },
+    { key: "savings", head: "SAVINGS" },
+    { key: "total", head: "TOTAL" },
+    { key: "realTotal", head: "TODAY'S $" },
+  ];
+  const numLeft = M + 108;
+  const colW = (RIGHT - numLeft) / numericHeads.length;
+  const colRight = (idx: number) => numLeft + colW * (idx + 1);
+  const tableFontSize = numericHeads.length > 5 ? 8 : 9;
+  const gradeX = M + 74;
+  numericHeads.forEach((c, idx) => rightText(page, c.head, colRight(idx), y, 7.5, f.bold, MUTED));
   y -= 6;
   page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 1, color: LINE });
   y -= 16;
@@ -159,20 +180,95 @@ export async function generateProjectionPdf(
       page.drawRectangle({ x: M, y: y - 4, width: RIGHT - M, height: rowH, color: TINT });
     }
     const font = sepRow || i === p.years.length - 1 ? f.bold : f.reg;
-    page.drawText(String(yLine.year) + (sepRow ? "*" : ""), { x: M + 4, y, size: 9, font, color: INK });
-    page.drawText(String(yLine.age), { x: C.age, y, size: 9, font, color: INK });
-    page.drawText(yLine.serving ? yLine.grade : "-", { x: C.grade, y, size: 9, font, color: INK });
-    rightText(page, formatUsd(yLine.tsp), C.tsp, y, 9, font);
-    rightText(page, formatUsd(yLine.invest), C.invest, y, 9, font);
-    rightText(page, formatUsd(yLine.savings), C.sav, y, 9, font);
-    rightText(page, formatUsd(yLine.total), C.total, y, 9, font);
-    rightText(page, formatUsd(yLine.realTotal), C.real, y, 9, font, MUTED);
+    page.drawText(String(yLine.year) + (sepRow ? "*" : ""), { x: M + 4, y, size: tableFontSize, font, color: INK });
+    page.drawText(String(yLine.age), { x: M + 42, y, size: tableFontSize, font, color: INK });
+    page.drawText(yLine.serving ? yLine.grade : "-", { x: gradeX, y, size: tableFontSize, font, color: INK });
+    numericHeads.forEach((c, idx) => {
+      rightText(
+        page,
+        formatUsd(yLine[c.key]),
+        colRight(idx),
+        y,
+        tableFontSize,
+        font,
+        c.key === "realTotal" ? MUTED : INK
+      );
+    });
     y -= rowH;
   });
   if (p.totals.separationYear !== null) {
     ensureSpace(14);
     page.drawText("* separation year", { x: M, y, size: 8, font: f.reg, color: MUTED });
     y -= 14;
+  }
+
+  // ---- optional sections: fees, Roth trade space, long-term analysis ----
+  const sectionHead = (label: string) => {
+    ensureSpace(40);
+    y -= 8;
+    page.drawText(label, { x: M, y, size: 9, font: f.bold, color: MUTED });
+    y -= 6;
+    page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 1, color: LINE });
+    y -= 14;
+  };
+  const bodyLine = (text: string, bold = false, indent = 0) => {
+    ensureSpace(14);
+    page.drawText(text, {
+      x: M + indent,
+      y,
+      size: 8.5,
+      font: bold ? f.bold : f.reg,
+      color: INK,
+      maxWidth: RIGHT - M - indent,
+      lineHeight: 10.5,
+    });
+    // Rough wrap allowance: bump extra for long lines.
+    const linesUsed = Math.ceil(f.reg.widthOfTextAtSize(text, 8.5) / (RIGHT - M - indent));
+    y -= 13 * Math.max(1, linesUsed);
+  };
+
+  if (p.fees) {
+    sectionHead("FUND MANAGEMENT FEES");
+    bodyLine(
+      `TSP expense ratio: ${p.fees.tspExpenseRatioPct}%/yr (about $${(p.fees.tspExpenseRatioPct * 10).toFixed(2)} per $1,000 invested per year)` +
+        (p.fees.iraExpenseRatioPct !== null ? `  -  IRA expense ratio: ${p.fees.iraExpenseRatioPct}%/yr` : ""),
+      true
+    );
+    bodyLine(`Estimated dollars lost to fees over this horizon: ${formatUsd(p.fees.estimatedFeeDrag)}`, true);
+    for (const n of p.fees.notes) bodyLine(`- ${n}`, false, 6);
+  }
+
+  if (p.rothTradeoff) {
+    const r = p.rothTradeoff;
+    sectionHead("ROTH VS TRADITIONAL TRADE SPACE");
+    bodyLine(
+      `${formatUsd(r.monthlyContribution)}/mo for ${r.yearsContributing} years, withdrawn after ${r.yearsToWithdrawal} years at ${r.annualReturnPct}%/yr  -  tax rate ${r.taxRateNowPct}% today vs ${r.taxRateAtWithdrawalPct}% at withdrawal`
+    );
+    bodyLine(`Pre-tax balance at horizon (identical both ways): ${formatUsd(r.preTaxBalance)}`);
+    bodyLine(
+      `Roth: pay ${formatUsd(r.taxPaidUpFront)} in tax up front, keep ${formatUsd(r.rothAfterTax)} tax-free at the horizon`
+    );
+    bodyLine(
+      `Traditional: pay $0 up front, owe ${formatUsd(r.deferredTaxBill)} at withdrawal, keep ${formatUsd(r.tradAfterTax)}`
+    );
+    bodyLine(
+      r.winner === "even"
+        ? "Verdict: effectively even at these tax rates."
+        : `Verdict: ${r.winner === "roth" ? "Roth" : "Traditional"} comes out ahead by about ${formatUsd(r.advantage)} (net of the up-front tax).`,
+      true
+    );
+  }
+
+  if (p.longTerm) {
+    sectionHead("LONG-TERM ANALYSIS");
+    for (const m of p.longTerm.milestones) {
+      bodyLine(`Age ${m.age} (${m.year}):  ${formatUsd(m.total)}   (${formatUsd(m.realTotal)} in today's dollars)`);
+    }
+    bodyLine(
+      `Sustainable withdrawal at ~4%/yr: ${formatUsd(p.longTerm.fourPercentAnnual)}/yr = ${formatUsd(p.longTerm.fourPercentMonthly)}/mo (${formatUsd(p.longTerm.fourPercentMonthlyReal)}/mo in today's dollars)`,
+      true
+    );
+    for (const n of p.longTerm.notes) bodyLine(`- ${n}`, false, 6);
   }
 
   footer(page, f);

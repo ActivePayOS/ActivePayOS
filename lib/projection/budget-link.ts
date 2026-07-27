@@ -45,6 +45,8 @@ export type SavedBudgetLike = {
   expenses?: Array<Partial<BudgetItem>>;
   tspPct?: number;
   tspBaseId?: string;
+  iraEnabled?: boolean;
+  iraMonthly?: number;
 };
 
 /** Coerce best-effort stored rows into well-formed budget items. */
@@ -100,7 +102,11 @@ export function budgetContributionCandidates(
     income.find((r) => r.id === saved.tspBaseId) ?? income.find((r) => /base/i.test(r.label));
   const tspMonthly =
     Math.max(0, saved.tspPct ?? 0) * Math.max(0, baseRow?.amount ?? income[0]?.amount ?? 0);
-  const leftover = total(income) - total(expenses) - tspMonthly;
+  // The budget's percentage-TSP and IRA contributions already leave the
+  // spendable pool, so they come out of the leftover too (the IRA itself is
+  // modeled as its own account in the projector, prefilled from the budget).
+  const iraMonthly = saved.iraEnabled ? Math.max(0, saved.iraMonthly ?? 0) : 0;
+  const leftover = total(income) - total(expenses) - tspMonthly - iraMonthly;
   if (leftover > 0.5) {
     candidates.push({
       id: "leftover",

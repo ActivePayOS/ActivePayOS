@@ -118,7 +118,9 @@ export function GrowthChart({
   const H = 400;
   const ML = 68;
   const MR = 20;
-  const MT = 24;
+  // Top margin leaves a dedicated band for the legend so in-plot labels (the
+  // "separation" marker) never collide with it.
+  const MT = 44;
   const MB = 44;
   const [hover, setHover] = useState<number | null>(null);
 
@@ -215,7 +217,7 @@ export function GrowthChart({
       {sepX !== null && (
         <g>
           <line x1={sepX} x2={sepX} y1={MT} y2={H - MB} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" />
-          <text x={sepX + 5} y={MT + 12} fontSize={11} fill="#ef4444" fontWeight={600}>
+          <text x={sepX + 5} y={MT + 18} fontSize={11} fill="#ef4444" fontWeight={600}>
             separation
           </text>
         </g>
@@ -234,7 +236,7 @@ export function GrowthChart({
         ) : null
       )}
 
-      <g transform={`translate(${ML + 8}, ${MT - 6})`} fontSize={12}>
+      <g transform={`translate(${ML + 8}, 10)`} fontSize={12}>
         {keys.map((k, i) => (
           <g key={k} transform={`translate(${i * 96}, 0)`}>
             <rect width={10} height={10} y={2} rx={2} fill={ACCOUNT_COLORS[k]} fillOpacity={0.8} />

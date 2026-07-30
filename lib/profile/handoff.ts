@@ -9,9 +9,11 @@
 
 import type { Track } from "@/data/promotion/timing";
 import type { BranchId as TimingBranchId } from "@/data/promotion/timing";
+import type { ProjectionExport } from "@/lib/export/projection";
 
 export const PAY_SNAPSHOT_KEY = "activepayos:pay-snapshot:v1";
 export const BUDGET_KEY = "activepayos:budget:v1";
+export const PROJECTION_SNAPSHOT_KEY = "activepayos:projection-snapshot:v1";
 
 export type PaySnapshot = {
   v: 1;
@@ -99,6 +101,62 @@ export function loadPaySnapshot(): PaySnapshot | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return isSnapshot(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Wealth Projector snapshot ------------------------------------------
+// The projector persists its latest computed report (debounced, silently —
+// same spirit as the pay snapshot) so any page can export the projection
+// without revisiting the tool.
+
+export type ProjectionSnapshot = {
+  v: 1;
+  generatedOn: string; // YYYY-MM-DD
+  export: ProjectionExport;
+};
+
+function isProjectionSnapshot(x: unknown): x is ProjectionSnapshot {
+  if (!x || typeof x !== "object") return false;
+  const s = x as Partial<ProjectionSnapshot>;
+  if (s.v !== 1 || typeof s.generatedOn !== "string") return false;
+  const e = s.export as Partial<ProjectionExport> | undefined;
+  return (
+    !!e &&
+    typeof e === "object" &&
+    !!e.scenario &&
+    typeof e.scenario === "object" &&
+    Array.isArray(e.years) &&
+    Array.isArray(e.promotions) &&
+    !!e.totals &&
+    typeof e.totals === "object" &&
+    typeof (e.totals as { final?: unknown }).final === "number"
+  );
+}
+
+export function saveProjectionSnapshot(exportData: ProjectionExport): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const snapshot: ProjectionSnapshot = {
+      v: 1,
+      generatedOn: exportData.generatedOn || new Date().toISOString().slice(0, 10),
+      export: exportData,
+    };
+    localStorage.setItem(PROJECTION_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadProjectionSnapshot(): ProjectionSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PROJECTION_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isProjectionSnapshot(parsed) ? parsed : null;
   } catch {
     return null;
   }

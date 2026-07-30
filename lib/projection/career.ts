@@ -119,9 +119,13 @@ export type CareerProjectionInput = {
   iraReturn?: number;
 
   // Civilian 401(k) (optional): contributions start at separation and run
-  // until the chosen stop age. Include any employer match in the monthly
-  // amount — the model doesn't guess a civilian employer's formula.
+  // until the chosen stop age. k401Monthly is the member's own (employee)
+  // contribution and is capped at the IRS elective-deferral limit, exactly
+  // like the TSP employee share. Employer match goes in k401MatchMonthly —
+  // it does not count against the elective-deferral limit, so it rides on
+  // top uncapped (mirroring the TSP agency contribution).
   k401Monthly?: number;
+  k401MatchMonthly?: number;
   k401UntilAge?: number;
   k401Return?: number;
 
@@ -187,7 +191,13 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
   const iraMonthly = Math.min(iraCapMonthly, Math.max(0, i.iraMonthly ?? 0));
   const iraMonthlyAfter = Math.min(iraCapMonthly, Math.max(0, i.iraMonthlyAfter ?? 0));
   const iraUntilAge = i.iraUntilAge ?? Infinity;
-  const k401Monthly = Math.max(0, i.k401Monthly ?? 0);
+  // 401(k) employee contributions honor the IRS elective-deferral limit
+  // (same cap the TSP employee share uses); the employer match rides on top.
+  const k401Monthly = Math.min(
+    TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12,
+    Math.max(0, i.k401Monthly ?? 0)
+  );
+  const k401MatchMonthly = Math.max(0, i.k401MatchMonthly ?? 0);
   const k401UntilAge = i.k401UntilAge ?? Infinity;
 
   let tsp = Math.max(0, i.tspBalance);
@@ -260,7 +270,7 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
     } else {
       lastBasePay = 0;
       const iraContrib = ageNow < iraUntilAge ? iraMonthlyAfter : 0;
-      const k401Contrib = ageNow < k401UntilAge ? k401Monthly : 0;
+      const k401Contrib = ageNow < k401UntilAge ? k401Monthly + k401MatchMonthly : 0;
       tsp = tsp * (1 + rTsp);
       invest = invest * (1 + rInv) + Math.max(0, i.invMonthlyAfter);
       savings = savings * (1 + rSav) + Math.max(0, i.savMonthlyAfter);

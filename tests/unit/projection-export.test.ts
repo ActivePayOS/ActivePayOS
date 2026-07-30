@@ -79,6 +79,32 @@ describe("generateProjectionCsv", () => {
     expect(csv).toContain("Assumed TSP return (%/yr),9.7");
   });
 
+  it("is summary-first: SUMMARY and Totals come before the year table", () => {
+    expect(csv.indexOf("SUMMARY")).toBeGreaterThan(-1);
+    expect(csv.indexOf("SUMMARY")).toBeLessThan(csv.indexOf("Scenario"));
+    expect(csv.indexOf("Totals")).toBeLessThan(csv.indexOf("Year by year"));
+    expect(csv).toContain("What it means");
+  });
+
+  it("uses \\n line endings", () => {
+    expect(csv).not.toContain("\r\n");
+    expect(csv.endsWith("\n")).toBe(true);
+  });
+
+  it("hides Investments/Savings columns when those accounts are off", () => {
+    const off: ProjectionExport = {
+      ...P,
+      activeAccounts: { invest: false, savings: false },
+      years: P.years.map((y) => ({ ...y, invest: 0, savings: 0 })),
+    };
+    const csvOff = generateProjectionCsv(off);
+    expect(csvOff).not.toContain("Investments (USD)");
+    expect(csvOff).not.toContain("Savings (USD)");
+    // Default payloads keep both columns.
+    expect(csv).toContain("Investments (USD)");
+    expect(csv).toContain("Savings (USD)");
+  });
+
   it("lists promotions with the not-guaranteed caveat", () => {
     expect(csv).toContain("E-6,2028,board/exam-driven (not guaranteed)");
   });
@@ -114,8 +140,18 @@ describe("generateProjectionTxt", () => {
     expect(txt).toContain("not guarantees");
   });
 
+  it("is summary-first: the SUMMARY block precedes the year table", () => {
+    expect(txt.indexOf("SUMMARY")).toBeGreaterThan(-1);
+    expect(txt.indexOf("SUMMARY")).toBeLessThan(txt.indexOf("YEAR BY YEAR"));
+    expect(txt.indexOf("At separation (2031)")).toBeLessThan(txt.indexOf("YEAR BY YEAR"));
+  });
+
+  it("uses \\n line endings", () => {
+    expect(txt).not.toContain("\r\n");
+  });
+
   it("marks post-service years without a grade", () => {
-    const row2064 = txt.split("\r\n").find((l) => l.startsWith("2064"))!;
+    const row2064 = txt.split("\n").find((l) => l.startsWith("2064"))!;
     expect(row2064).toContain("-");
     expect(row2064).toContain("$920,606");
   });

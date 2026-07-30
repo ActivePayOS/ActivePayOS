@@ -1,20 +1,20 @@
 // lib/export/pdf.ts
-// PDF pay-summary generator with three selectable layouts, drawn with pdf-lib.
-// Uses only the Standard-14 Helvetica fonts (WinAnsi) so there are no font
-// files to ship and it runs cleanly in the serverless Node runtime.
+// PDF pay-summary generator, drawn with pdf-lib. Uses only the Standard-14
+// Helvetica fonts (WinAnsi) so there are no font files to ship and it runs
+// cleanly in the serverless Node runtime.
 //
-//   classic  – clean letterhead, two-column context grid, ruled table
-//   modern   – navy header band, highlighted total, zebra-striped table
-//   compact  – centered card, monthly-focused, minimal footprint
+// One layout ships: "modern" — navy header band, highlighted total box first
+// (summary up top), then a zebra-striped component table where each line
+// carries a muted plain-English note from the export glossary. The old
+// "classic" and "compact" layouts were unreachable from the UI and have been
+// deleted.
 
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage, PDFImage } from "pdf-lib";
 import { PaySummary, formatUsd } from "./summary";
+import { glossaryFor } from "./glossary";
 
-export type PdfLayout = "classic" | "modern" | "compact";
-const PDF_LAYOUTS: PdfLayout[] = ["classic", "modern", "compact"];
-export function isPdfLayout(x: unknown): x is PdfLayout {
-  return typeof x === "string" && (PDF_LAYOUTS as string[]).includes(x);
-}
+/** The single supported layout (kept as a named type for callers). */
+export type PdfLayout = "modern";
 
 const PAGE_W = 612; // US Letter
 const PAGE_H = 792;
@@ -49,76 +49,6 @@ function rightText(
   page.drawText(text, { x: rightX - w, y, size, font, color });
 }
 
-function centerText(
-  page: PDFPage,
-  text: string,
-  cx: number,
-  y: number,
-  size: number,
-  font: PDFFont,
-  color: Rgb = INK
-) {
-  const w = font.widthOfTextAtSize(text, size);
-  page.drawText(text, { x: cx - w / 2, y, size, font, color });
-}
-
-// ---------------------------------------------------------------- classic ---
-
-function drawClassic(page: PDFPage, f: Fonts, s: PaySummary) {
-  const M = 50;
-  const right = PAGE_W - M;
-  const monthlyRight = 410;
-
-  const y = PAGE_H - 58;
-  page.drawText("ActivePayOS", { x: M, y, size: 24, font: f.bold, color: INK });
-  page.drawText("Pay Summary", { x: M, y: y - 19, size: 12, font: f.reg, color: MUTED });
-  rightText(page, `${s.grade}  -  ${s.year}`, right, y, 12, f.bold, MUTED);
-  rightText(page, `Generated ${s.generatedOn}`, right, y - 16, 9, f.reg, MUTED);
-
-  const ruleY = y - 34;
-  page.drawLine({ start: { x: M, y: ruleY }, end: { x: right, y: ruleY }, thickness: 1.5, color: INK });
-
-  const pairs: [string, string][] = [
-    ["YEAR", String(s.year)],
-    ["GRADE", s.grade],
-    ["YEARS OF SERVICE", s.yosLabel],
-    ["DUTY LOCATION", s.location],
-    ["DEPENDENTS", s.dependents ? "Yes" : "No"],
-    ["STATE OF LEGAL RESIDENCE", s.stateOfLegalResidence],
-  ];
-  const colX = [M, 320];
-  const topY = ruleY - 28;
-  pairs.forEach((p, i) => {
-    const x = colX[i % 2];
-    const yy = topY - Math.floor(i / 2) * 40;
-    page.drawText(p[0], { x, y: yy, size: 8, font: f.bold, color: MUTED });
-    page.drawText(p[1], { x, y: yy - 15, size: 12, font: f.reg, color: INK });
-  });
-
-  let ty = topY - 3 * 40 - 6;
-  page.drawText("PAY COMPONENT", { x: M, y: ty, size: 8, font: f.bold, color: MUTED });
-  rightText(page, "MONTHLY", monthlyRight, ty, 8, f.bold, MUTED);
-  rightText(page, "ANNUAL", right, ty, 8, f.bold, MUTED);
-  ty -= 8;
-  page.drawLine({ start: { x: M, y: ty }, end: { x: right, y: ty }, thickness: 1, color: LINE });
-  ty -= 22;
-
-  for (const l of s.lines) {
-    page.drawText(l.label, { x: M, y: ty, size: 11, font: f.reg, color: INK });
-    rightText(page, formatUsd(l.monthly), monthlyRight, ty, 11, f.reg, INK);
-    rightText(page, formatUsd(l.annual), right, ty, 11, f.reg, INK);
-    page.drawLine({ start: { x: M, y: ty - 8 }, end: { x: right, y: ty - 8 }, thickness: 0.5, color: LINE });
-    ty -= 26;
-  }
-
-  page.drawLine({ start: { x: M, y: ty + 16 }, end: { x: right, y: ty + 16 }, thickness: 1.2, color: INK });
-  page.drawText(s.total.label, { x: M, y: ty, size: 12, font: f.bold, color: INK });
-  rightText(page, formatUsd(s.total.monthly), monthlyRight, ty, 12, f.bold, INK);
-  rightText(page, formatUsd(s.total.annual), right, ty, 12, f.bold, INK);
-
-  footer(page, f);
-}
-
 // ----------------------------------------------------------------- modern ---
 
 function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
@@ -148,7 +78,7 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
     page.drawText(p[1], { x, y: yy - 14, size: 12, font: f.reg, color: INK });
   });
 
-  // Highlighted total box
+  // Highlighted total box — the summary stays first.
   const boxTop = PAGE_H - bandH - 110;
   const boxH = 66;
   const boxY = boxTop - boxH;
@@ -159,7 +89,8 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
   rightText(page, "ANNUAL", right - 20, boxY + boxH - 22, 9, f.bold, MUTED);
   rightText(page, formatUsd(s.total.annual), right - 20, boxY + 18, 15, f.bold, INK);
 
-  // Zebra table
+  // Zebra table. Rows grow to fit a muted plain-English note (from the site's
+  // i-dot popover copy) under each component label.
   const labelX = M + 12;
   const monthlyRight = 408;
   const annualRight = right - 12;
@@ -170,9 +101,10 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
   ty -= 6;
   page.drawLine({ start: { x: M, y: ty }, end: { x: right, y: ty }, thickness: 1, color: LINE });
 
-  const rowH = 28;
+  let rowTop = ty;
   s.lines.forEach((l, i) => {
-    const rowTop = ty - i * rowH;
+    const note = glossaryFor(l.label);
+    const rowH = note ? 38 : 28;
     if (i % 2 === 1) {
       page.drawRectangle({ x: M, y: rowTop - rowH, width: right - M, height: rowH, color: TINT });
     }
@@ -180,9 +112,20 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
     page.drawText(l.label, { x: labelX, y: baseline, size: 11, font: f.reg, color: INK });
     rightText(page, formatUsd(l.monthly), monthlyRight, baseline, 11, f.reg, INK);
     rightText(page, formatUsd(l.annual), annualRight, baseline, 11, f.reg, INK);
+    if (note) {
+      page.drawText(note, {
+        x: labelX,
+        y: rowTop - 31,
+        size: 7,
+        font: f.reg,
+        color: MUTED,
+        maxWidth: right - M - 24,
+      });
+    }
+    rowTop -= rowH;
   });
 
-  const totalY = ty - s.lines.length * rowH - 22;
+  const totalY = rowTop - 22;
   page.drawLine({ start: { x: M, y: totalY + 16 }, end: { x: right, y: totalY + 16 }, thickness: 1.2, color: INK });
   page.drawText(s.total.label, { x: labelX, y: totalY, size: 12, font: f.bold, color: INK });
   rightText(page, formatUsd(s.total.monthly), monthlyRight, totalY, 12, f.bold, INK);
@@ -208,63 +151,6 @@ function drawModern(page: PDFPage, f: Fonts, s: PaySummary, chart?: PDFImage) {
   footer(page, f);
 }
 
-// ---------------------------------------------------------------- compact ---
-
-function drawCompact(page: PDFPage, f: Fonts, s: PaySummary) {
-  const cardX = 106;
-  const cardW = 400;
-  const cardRight = cardX + cardW;
-  const cx = cardX + cardW / 2;
-  const cardH = 360;
-  const cardTop = 600;
-  const cardY = cardTop - cardH;
-
-  page.drawRectangle({
-    x: cardX,
-    y: cardY,
-    width: cardW,
-    height: cardH,
-    color: WHITE,
-    borderColor: LINE,
-    borderWidth: 1,
-  });
-  page.drawRectangle({ x: cardX, y: cardTop - 6, width: cardW, height: 6, color: ACCENT });
-
-  centerText(page, "ActivePayOS", cx, cardTop - 40, 20, f.bold, INK);
-  centerText(page, "Pay Summary", cx, cardTop - 58, 10, f.reg, MUTED);
-  page.drawLine({ start: { x: cardX + 28, y: cardTop - 72 }, end: { x: cardRight - 28, y: cardTop - 72 }, thickness: 0.75, color: LINE });
-
-  centerText(page, `${s.grade}  -  ${s.yosLabel}  -  ${s.year}`, cx, cardTop - 94, 11, f.bold, INK);
-  centerText(
-    page,
-    `${s.location}  -  ${s.dependents ? "With dependents" : "No dependents"}`,
-    cx,
-    cardTop - 110,
-    9,
-    f.reg,
-    MUTED
-  );
-
-  const padX = 34;
-  const labelX = cardX + padX;
-  const valRight = cardRight - padX;
-  let ty = cardTop - 142;
-  const rowH = 26;
-  for (const l of s.lines) {
-    page.drawText(l.label, { x: labelX, y: ty, size: 11, font: f.reg, color: INK });
-    rightText(page, `${formatUsd(l.monthly)} /mo`, valRight, ty, 11, f.reg, INK);
-    ty -= rowH;
-  }
-
-  page.drawLine({ start: { x: labelX, y: ty + 14 }, end: { x: valRight, y: ty + 14 }, thickness: 1, color: INK });
-  page.drawText("Total / month", { x: labelX, y: ty - 4, size: 13, font: f.bold, color: INK });
-  rightText(page, formatUsd(s.total.monthly), valRight, ty - 4, 14, f.bold, ACCENT);
-  centerText(page, `Annual ${formatUsd(s.total.annual)}`, cx, ty - 26, 9, f.reg, MUTED);
-
-  centerText(page, "Not official - planning only. Verify against your LES / myPay.", cx, cardY + 26, 7, f.reg, MUTED);
-  centerText(page, `Generated ${s.generatedOn} - activepayos.com`, cx, cardY + 16, 7, f.reg, MUTED);
-}
-
 // ------------------------------------------------------------------ shared ---
 
 function footer(page: PDFPage, f: Fonts) {
@@ -277,9 +163,10 @@ function footer(page: PDFPage, f: Fonts) {
 
 export async function generatePayPdf(
   summary: PaySummary,
-  layout: PdfLayout,
+  layout: PdfLayout = "modern",
   chartPng?: Uint8Array
 ): Promise<Uint8Array> {
+  void layout; // single layout; parameter kept so existing call sites compile
   const doc = await PDFDocument.create();
   doc.setTitle(`ActivePayOS Pay Summary - ${summary.grade} ${summary.year}`);
   doc.setCreator("ActivePayOS");
@@ -293,9 +180,7 @@ export async function generatePayPdf(
 
   const chart = chartPng && chartPng.length > 0 ? await doc.embedPng(chartPng) : undefined;
 
-  if (layout === "modern") drawModern(page, f, summary, chart);
-  else if (layout === "compact") drawCompact(page, f, summary);
-  else drawClassic(page, f, summary);
+  drawModern(page, f, summary, chart);
 
   return doc.save();
 }

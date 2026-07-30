@@ -56,7 +56,7 @@ export type RothTradeoffResult = {
   final: RothTradeoffYear;
   /** Total contributed over the window. */
   contributed: number;
-  /** roth | traditional | even — by final after-tax value. */
+  /** roth | traditional | even — equal-out-of-pocket comparison at the horizon. */
   winner: "roth" | "traditional" | "even";
   /** After-tax advantage of the winner at the horizon (>= 0). */
   advantage: number;
@@ -101,11 +101,21 @@ export function computeRothTradeoff(i: RothTradeoffInput): RothTradeoffResult {
   }
 
   const final = years[years.length - 1];
-  // Fair comparison note: on the Roth path you ALSO parted with the up-front
-  // tax money. Net position = after-tax value − tax paid up front (Roth) vs
-  // after-tax value (Traditional, tax netted at withdrawal). With equal
-  // contributions this is exactly the t_now vs t_later comparison.
-  const rothNet = final.rothAfterTax - final.taxPaidUpFront;
+  // Equal-out-of-pocket comparison. On the Roth path you also part with the
+  // up-front tax money — dollars the Traditional path keeps invested and
+  // compounding right alongside the account. So the fair netting compounds
+  // the up-front tax at the account's return: each month's tax (c × t_now)
+  // grows by exactly the same factor as that month's contribution, which
+  // makes the opportunity-costed total t_now × balance. Net positions:
+  //
+  //   Roth:        balance − t_now × balance   = balance × (1 − t_now)
+  //   Traditional: balance − t_later × balance = balance × (1 − t_later)
+  //
+  // Equal rates tie, Roth wins when the withdrawal-time rate is higher,
+  // Traditional when it's lower — matching the breakeven line and the
+  // caveats. (Netting the tax WITHOUT compounding would structurally favor
+  // Roth, contradicting the stated t_now-vs-t_later rule.)
+  const rothNet = final.rothAfterTax - final.balance * tNow;
   const tradNet = final.tradAfterTax;
   const diff = rothNet - tradNet;
   const winner = Math.abs(diff) < 1 ? "even" : diff > 0 ? "roth" : "traditional";

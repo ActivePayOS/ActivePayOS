@@ -4,7 +4,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { formatUsd } from "./summary";
-import { activeExtraAccounts, type ProjectionExport } from "./projection";
+import { activeColumns, type ProjectionExport } from "./projection";
 
 const PAGE_W = 612; // US Letter
 const PAGE_H = 792;
@@ -96,6 +96,11 @@ export async function generateProjectionPdf(
         >)
       : []),
     ["BRS agency match received", formatUsd(p.totals.agencyMatch)],
+    ...(p.pension
+      ? ([[`Est. pension (${p.pension.serviceYearsTotal} yrs)`, `${formatUsd(p.pension.monthlyPension)}/mo`]] as Array<
+          [string, string]
+        >)
+      : []),
   ];
   const statW = (RIGHT - M) / stats.length;
   stats.forEach(([label, value], i) => {
@@ -130,6 +135,12 @@ export async function generateProjectionPdf(
             : " (none fall inside the service window)"
         }`
       : "Promotions not modeled - pay stays at the current grade (YOS raises still apply)",
+    ...(typeof p.totals.employeeTsp === "number" && p.totals.employeeTsp > 0
+      ? [
+          `TSP while serving: you put in ${formatUsd(p.totals.employeeTsp)}, the agency added ${formatUsd(p.totals.agencyMatch)}`,
+        ]
+      : []),
+    ...(p.pension ? [p.pension.note] : []),
   ];
   for (const a of assumptions) {
     page.drawText(a, { x: M, y, size: 9, font: f.reg, color: INK, maxWidth: RIGHT - M });
@@ -149,14 +160,15 @@ export async function generateProjectionPdf(
   // ---- year table ----
   ensureSpace(48);
   page.drawText("YEAR BY YEAR", { x: M, y, size: 9, font: f.bold, color: MUTED });
-  const extras = activeExtraAccounts(p);
-  // Numeric columns are laid out dynamically so IRA/401(k) appear only when used.
+  const cols = activeColumns(p);
+  // Numeric columns are laid out dynamically so IRA/401(k) appear only when
+  // used and Investments/Savings hide when the account is switched off.
   const numericHeads: { key: "tsp" | "ira" | "k401" | "invest" | "savings" | "total" | "realTotal"; head: string }[] = [
     { key: "tsp", head: "TSP" },
-    ...(extras.ira ? [{ key: "ira" as const, head: "IRA" }] : []),
-    ...(extras.k401 ? [{ key: "k401" as const, head: "401(K)" }] : []),
-    { key: "invest", head: "INVEST" },
-    { key: "savings", head: "SAVINGS" },
+    ...(cols.ira ? [{ key: "ira" as const, head: "IRA" }] : []),
+    ...(cols.k401 ? [{ key: "k401" as const, head: "401(K)" }] : []),
+    ...(cols.invest ? [{ key: "invest" as const, head: "INVEST" }] : []),
+    ...(cols.savings ? [{ key: "savings" as const, head: "SAVINGS" }] : []),
     { key: "total", head: "TOTAL" },
     { key: "realTotal", head: "TODAY'S $" },
   ];

@@ -1,7 +1,11 @@
 // lib/export/txt.ts
 // Plain-text pay summary: human-readable, aligned, opens in any editor.
+// Leads with a headline SUMMARY block, then context and the component table
+// (each component gets a plain-English sub-line from the export glossary).
 
 import { PaySummary, formatUsd } from "./summary";
+import { payOverview } from "./overview";
+import { glossaryFor } from "./glossary";
 
 function padRight(s: string, width: number): string {
   return s.length >= width ? s : s + " ".repeat(width - s.length);
@@ -15,6 +19,16 @@ export function generatePayTxt(summary: PaySummary): string {
 
   out.push("ActivePayOS - Pay Summary");
   out.push("=========================");
+  out.push("");
+
+  // Headline block first: the numbers that matter, each with what it means.
+  out.push("SUMMARY");
+  const overview = payOverview(summary);
+  const ovWidth = Math.max(...overview.map((o) => o.label.length)) + 2;
+  for (const o of overview) {
+    out.push(`${padRight(o.label + ":", ovWidth)} ${o.value}`);
+    out.push(`${" ".repeat(ovWidth + 1)}- ${o.explanation}`);
+  }
   out.push("");
 
   const context: Array<[string, string]> = [
@@ -49,6 +63,8 @@ export function generatePayTxt(summary: PaySummary): string {
   out.push("-".repeat(ruleWidth));
   summary.lines.forEach((l, i) => {
     out.push(tableRow(l.label, monthlyStrs[i], annualStrs[i]));
+    const note = glossaryFor(l.label);
+    if (note) out.push(`    - ${note}`);
   });
   out.push("-".repeat(ruleWidth));
   out.push(

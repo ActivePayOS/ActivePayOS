@@ -7,6 +7,8 @@
 // Tax constants are dated and isolated here so they can be verified/updated the
 // same way as the pay tables (the project's "show your work" model).
 
+import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "./tsp";
+
 export type FilingStatus = "single" | "married";
 export type TspType = "traditional" | "roth";
 
@@ -52,7 +54,9 @@ export const ADDL_MEDICARE_THRESHOLD_ANNUAL = 200000;
 
 // 2026 IRS elective-deferral limit for TSP (employee traditional + Roth). The
 // government match is separate and does not count against this limit.
-export const TSP_ELECTIVE_DEFERRAL_LIMIT_2026 = 24500;
+// Single source of truth lives in lib/pay/tsp.ts; re-exported here so existing
+// imports from "@/lib/pay/takehome" keep working.
+export { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 };
 
 // SGLI: $0.05 per $1,000 of coverage per month + $1/month TSGLI.
 // Rate dropped from $0.06 to $0.05 per $1,000 effective July 1, 2025.

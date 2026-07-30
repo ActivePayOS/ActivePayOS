@@ -6,6 +6,8 @@
 // 2026 IRS elective deferral (402(g)) limit. VERIFY against IRS guidance
 // (2025 = $23,500). Catch-up contributions (age 50+/60-63) are separate and
 // not modeled here.
+// SINGLE SOURCE OF TRUTH for this figure — lib/pay/takehome.ts re-exports it,
+// so update it here (and only here) on the annual refresh.
 export const TSP_ELECTIVE_DEFERRAL_LIMIT_2026 = 24500;
 
 // ---------------------------------------------------------------------------

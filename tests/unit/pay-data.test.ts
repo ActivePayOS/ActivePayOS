@@ -41,6 +41,25 @@ describe("basePayFor (2026 DFAS tables)", () => {
     expect(basePayFor(ds, "O-2E", 0)).toBeNull();
     expect(basePayFor(ds, "Z-9", 4)).toBeNull();
   });
+
+  it("pins the O-9/O-10 Executive Schedule Level II cap", () => {
+    expect(basePayFor(ds, "O-10", 20)).toBe(18999.9);
+    expect(basePayFor(ds, "O-10", 40)).toBe(18999.9);
+    expect(basePayFor(ds, "O-9", 22)).toBe(18999.9);
+    // DFAS publishes no O-10 rate below the "Over 20" column.
+    expect(basePayFor(ds, "O-10", 10)).toBeNull();
+  });
+
+  it("uses the E-1 under-4-months rate only when service months are supplied", () => {
+    expect(basePayFor(ds, "E-1", 0, 0)).toBe(2226);
+    expect(basePayFor(ds, "E-1", 0.25, 3)).toBe(2226);
+    // Month 4 of service switches to the standard E-1 rate.
+    expect(basePayFor(ds, "E-1", 1 / 3, 4)).toBe(2407.2);
+    // Without service months, behavior is unchanged: standard column.
+    expect(basePayFor(ds, "E-1", 0)).toBe(2407.2);
+    // The reduced rate applies to E-1 only.
+    expect(basePayFor(ds, "E-5", 0, 2)).toBe(3342.9);
+  });
 });
 
 describe("getBAS (2026)", () => {

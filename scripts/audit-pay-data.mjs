@@ -123,6 +123,28 @@ function main() {
     fail(`E-1 under-4-months rate = ${basePay.e1UnderFourMonthsMonthly}, expected 2226.0.`);
   }
 
+  // O-9/O-10 basic pay is capped by Executive Schedule Level II: every column
+  // DFAS publishes for those grades is the same capped figure in 2026. A bad
+  // regeneration that loses the cap must fail here, not just in vitest.
+  const SENIOR_OFFICER_CAP_2026 = 18999.9;
+  for (const grade of ["O-9", "O-10"]) {
+    const row = basePay.tables?.CO?.[grade] ?? [];
+    const published = row.filter((v) => v !== null && v !== undefined);
+    if (published.length === 0) {
+      fail(`No published ${grade} base-pay values found.`);
+    }
+    const uncapped = published.find((v) => v !== SENIOR_OFFICER_CAP_2026);
+    if (uncapped !== undefined) {
+      fail(`${grade} base pay = ${uncapped}, expected the ${SENIOR_OFFICER_CAP_2026} cap in every published column.`);
+    }
+  }
+
+  // BAH dollar golden (2026 DTMO): Boston (MA120) O-3 with dependents.
+  const bostonO3WithDep = withRates.ratesByMha?.MA120?.rates?.["O-3"];
+  if (bostonO3WithDep !== 5163) {
+    fail(`BAH MA120/O-3 with dependents = ${bostonO3WithDep}, expected 5163.`);
+  }
+
   const basRates = bas.rates ?? bas.data?.rates ?? {};
   const KNOWN_2026_BAS = { enlisted: 476.95, officers: 328.48 };
   for (const [key, expected] of Object.entries(KNOWN_2026_BAS)) {

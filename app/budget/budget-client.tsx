@@ -45,7 +45,6 @@ import {
   isSavingsGoal,
   type SavingsGoal,
 } from "@/lib/budget/goals";
-import { buildPaySummary } from "@/lib/export/summary";
 import { generatePayCsv } from "@/lib/export/csv";
 import { generatePayTxt } from "@/lib/export/txt";
 import { generatePayPdf } from "@/lib/export/pdf";
@@ -55,13 +54,44 @@ import {
   type BudgetExport,
 } from "@/lib/export/budget-summary";
 import { generateBudgetPdf } from "@/lib/export/budget-pdf";
+import { generateProjectionCsv, generateProjectionTxt } from "@/lib/export/projection";
+import { generateProjectionPdf } from "@/lib/export/projection-pdf";
+import {
+  availabilityForSections,
+  buildBundleData,
+  generateBundleCsv,
+  generateBundlePdf,
+  generateBundleTxt,
+  paySummaryFromTransfer,
+  type BundleData,
+} from "@/lib/export/bundle";
+import { filesToZipBlob } from "@/lib/export/zip";
 import PlanFlow from "@/components/PlanFlow";
 import InfoDot from "@/components/InfoDot";
 import HoverHint from "@/components/HoverHint";
 import ReportPanel from "@/components/ReportPanel";
 
-type ReportFormat = "csv" | "txt" | "pdf";
-type ReportScope = "budget" | "combined" | "pay";
+type ReportFormat = "csv" | "txt" | "pdf" | "all";
+
+// The three tools a report can include, in canonical site order (header
+// ribbon / PlanFlow order: Pay -> Budget -> Wealth Projector).
+const SECTION_ORDER = ["pay", "budget", "projection"] as const;
+type SectionId = (typeof SECTION_ORDER)[number];
+
+type ReportFile = { name: string; data: Blob | string | Uint8Array<ArrayBuffer> };
+
+const REPORT_FORMATS = [
+  { value: "csv", label: "CSV — any spreadsheet" },
+  { value: "txt", label: "Text — plain summary" },
+  { value: "pdf", label: "PDF — printable" },
+  { value: "all", label: "Everything (.zip)" },
+];
+
+const FORMAT_MIME: Record<Exclude<ReportFormat, "all">, string> = {
+  csv: "text/csv;charset=utf-8",
+  txt: "text/plain;charset=utf-8",
+  pdf: "application/pdf",
+};
 
 const STORAGE_KEY = "activepayos:budget:v1";
 
@@ -224,10 +254,12 @@ export default function BudgetClient() {
     return t ? describeImport(t, "bysource") : null;
   });
 
-  // Export controls (all generated in-browser).
+  // Export controls. Everything is generated in-browser; sections from the
+  // other tools are rebuilt from data already saved on this device.
   const [reportFormat, setReportFormat] = useState<ReportFormat>("csv");
-  const [reportScope, setReportScope] = useState<ReportScope>("budget");
+  const [selectedSections, setSelectedSections] = useState<string[]>(["budget"]);
   const [reporting, setReporting] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // Render the interactive UI only on the client so theme colors and any
   // device-saved budget match between hydration and the live DOM.
@@ -514,81 +546,176 @@ export default function BudgetClient() {
     window.URL.revokeObjectURL(url);
   }
 
-  // The Pay Calculator's own summary sheet, rebuilt from the imported transfer.
-  // Shared by the "Combined" (embedded) and "Pay breakdown" (standalone) scopes.
-  function paySummaryFromTransfer(t: PayTransfer, generatedOn: string) {
-    return buildPaySummary({
-      year: t.meta.year,
-      grade: t.meta.grade,
-      yosLabel: t.meta.yosLabel,
-      zip5: t.meta.receivesBah && t.meta.location !== "-" ? t.meta.location : undefined,
-      receivesBah: t.meta.receivesBah,
-      dependents: t.meta.dependents,
-      stateOfLegalResidence: t.meta.stateOfLegalResidence,
-      baseMonthly: t.income.base,
-      bahMonthly: t.income.bah,
-      basMonthly: t.income.bas,
-      otherMonthly: t.income.specials.reduce((a, s) => a + s.monthly, 0),
+  // Which tools have data to include in the report. The budget is always live
+  // on this page; pay comes from the in-memory import (or from storage via the
+  // shared bundle helper); the projection comes from the Wealth Projector's
+  // saved snapshot. Hints carry the same staleness copy as the import banner.
+  const reportSections = useMemo(() => {
+    const stored: { id: string; available: boolean; hint?: string }[] = mounted
+      ? availabilityForSections()
+      : [];
+    const storedPay = stored.find((s) => s.id === "pay");
+    const storedProjection = stored.find((s) => s.id === "projection");
+    const payAvailable = !!transfer || !!storedPay?.available;
+    return [
+      {
+        id: "pay" as const,
+        label: "Pay Calculator",
+        available: payAvailable,
+        hint: transfer
+          ? `Rebuilt from the ${transfer.meta.grade} pay you imported (${transfer.generatedOn}).`
+          : storedPay?.hint ??
+            "No imported pay on this device — use “Send to Budget” on the Pay Calculator first.",
+      },
+      {
+        id: "budget" as const,
+        label: "Budget",
+        available: true,
+        hint: "The live budget on this page.",
+      },
+      {
+        id: "projection" as const,
+        label: "Wealth Projector",
+        available: !!storedProjection?.available,
+        hint:
+          storedProjection?.hint ??
+          "No saved projection on this device — open the Wealth Projector once first.",
+      },
+    ];
+  }, [mounted, transfer]);
+
+  const selectedAvailableCount = reportSections.filter(
+    (s) => s.available && selectedSections.includes(s.id)
+  ).length;
+
+  // The budget rows exactly as this page shows them (chart ordering included).
+  function buildLiveBudgetExport(generatedOn: string): BudgetExport {
+    return {
       generatedOn,
-    });
+      income: income
+        .filter((i) => i.amount > 0)
+        .map((i) => ({ label: i.label || "Income", monthly: i.amount })),
+      expenses: orderedExpensesForGraph
+        .filter((e) => e.amount > 0)
+        .map((e) => ({ label: e.label || "Expense", monthly: e.amount })),
+      totalIncome: graph.totalIncome,
+      totalExpense: graph.totalExpense,
+      leftover: graph.leftover,
+    };
+  }
+
+  async function sankeyChartPng(): Promise<Uint8Array | undefined> {
+    if (!svgRef.current) return undefined;
+    try {
+      return await svgToPngBytes(svgRef.current, 2, "#ffffff");
+    } catch {
+      return undefined; // fall back to a chartless PDF
+    }
+  }
+
+  // One format's file(s) for the included sections. A single tool keeps the
+  // exact files (and names) it exports on its own page — the Pay sheets are
+  // rebuilt so the member doesn't have to go back to regenerate them — while
+  // multiple tools become one combined document via the bundle serializers.
+  async function buildReportFiles(
+    bundle: BundleData,
+    included: SectionId[],
+    fmt: Exclude<ReportFormat, "all">,
+    generatedOn: string,
+    staleness: Partial<Record<SectionId, string>> = {}
+  ): Promise<ReportFile[]> {
+    if (included.length === 1) {
+      if (included[0] === "budget" && bundle.budget) {
+        const stem = "activepayos_Budget";
+        if (fmt === "csv") return [{ name: `${stem}.csv`, data: generateBudgetCsv(bundle.budget) }];
+        if (fmt === "txt") return [{ name: `${stem}.txt`, data: generateBudgetTxt(bundle.budget) }];
+        const bytes = await generateBudgetPdf(bundle.budget, await sankeyChartPng());
+        return [{ name: `${stem}.pdf`, data: new Uint8Array(bytes) }];
+      }
+      if (included[0] === "pay" && bundle.pay) {
+        const stem = "activepayos_Pay_Breakdown";
+        if (fmt === "csv") return [{ name: `${stem}.csv`, data: generatePayCsv(bundle.pay) }];
+        if (fmt === "txt") return [{ name: `${stem}.txt`, data: generatePayTxt(bundle.pay) }];
+        const bytes = await generatePayPdf(bundle.pay, "modern");
+        return [{ name: `${stem}.pdf`, data: new Uint8Array(bytes) }];
+      }
+      if (included[0] === "projection" && bundle.projection) {
+        const p = bundle.projection;
+        const stem = `activepayos_WealthProjection_${p.scenario.grade}_${p.scenario.endYear}`;
+        if (fmt === "csv") return [{ name: `${stem}.csv`, data: generateProjectionCsv(p) }];
+        if (fmt === "txt") return [{ name: `${stem}.txt`, data: generateProjectionTxt(p) }];
+        const bytes = await generateProjectionPdf(p);
+        return [{ name: `${stem}.pdf`, data: new Uint8Array(bytes) }];
+      }
+    }
+
+    const stem = `activepayos_report_${generatedOn}`;
+    if (fmt === "csv") return [{ name: `${stem}.csv`, data: generateBundleCsv(bundle, staleness) }];
+    if (fmt === "txt") return [{ name: `${stem}.txt`, data: generateBundleTxt(bundle, staleness) }];
+    const bytes = await generateBundlePdf(
+      bundle,
+      bundle.budget ? { budget: await sankeyChartPng() } : undefined,
+      staleness
+    );
+    return [{ name: `${stem}.pdf`, data: new Uint8Array(bytes) }];
   }
 
   async function downloadReport() {
     setReporting(true);
+    setReportError(null);
     try {
       const generatedOn = new Date().toISOString().slice(0, 10);
-
-      // Pay breakdown only: the same CSV/TXT/PDF sheets the Pay Calculator
-      // exports, so the member doesn't have to go back to regenerate them.
-      if (reportScope === "pay" && transfer) {
-        const summary = paySummaryFromTransfer(transfer, generatedOn);
-        const stem = "activepayos_Pay_Breakdown";
-        if (reportFormat === "csv") {
-          triggerDownload(generatePayCsv(summary), "text/csv;charset=utf-8", `${stem}.csv`);
-        } else if (reportFormat === "txt") {
-          triggerDownload(generatePayTxt(summary), "text/plain;charset=utf-8", `${stem}.txt`);
-        } else {
-          const bytes = await generatePayPdf(summary, "modern");
-          triggerDownload(new Uint8Array(bytes), "application/pdf", `${stem}.pdf`);
-        }
+      const availableIds = new Set(
+        reportSections.filter((s) => s.available).map((s) => s.id as string)
+      );
+      const chosen = SECTION_ORDER.filter(
+        (id) => selectedSections.includes(id) && availableIds.has(id)
+      );
+      if (chosen.length === 0) {
+        setReportError("Choose at least one section to include in the report.");
         return;
       }
 
-      const incomeLines = income
-        .filter((i) => i.amount > 0)
-        .map((i) => ({ label: i.label || "Income", monthly: i.amount }));
-      const expenseLines = orderedExpensesForGraph
-        .filter((e) => e.amount > 0)
-        .map((e) => ({ label: e.label || "Expense", monthly: e.amount }));
-
-      const combined = reportScope === "combined" && !!transfer;
-      const data: BudgetExport = {
-        generatedOn,
-        income: incomeLines,
-        expenses: expenseLines,
-        totalIncome: graph.totalIncome,
-        totalExpense: graph.totalExpense,
-        leftover: graph.leftover,
-        pay: combined && transfer ? paySummaryFromTransfer(transfer, generatedOn) : undefined,
-      };
-
-      const stem = combined ? "activepayos_Pay_Budget" : "activepayos_Budget";
-      if (reportFormat === "csv") {
-        triggerDownload(generateBudgetCsv(data), "text/csv;charset=utf-8", `${stem}.csv`);
-      } else if (reportFormat === "txt") {
-        triggerDownload(generateBudgetTxt(data), "text/plain;charset=utf-8", `${stem}.txt`);
-      } else {
-        let chartPng: Uint8Array | undefined;
-        if (svgRef.current) {
-          try {
-            chartPng = await svgToPngBytes(svgRef.current, 2, "#ffffff");
-          } catch {
-            // fall back to a chartless PDF
-          }
-        }
-        const bytes = await generateBudgetPdf(data, chartPng);
-        triggerDownload(new Uint8Array(bytes), "application/pdf", `${stem}.pdf`);
+      // Live values win; anything not on this page is rebuilt from the data
+      // the other tools saved on this device.
+      const live: Partial<BundleData> = {};
+      if (chosen.includes("budget")) live.budget = buildLiveBudgetExport(generatedOn);
+      if (chosen.includes("pay") && transfer) {
+        live.pay = paySummaryFromTransfer(transfer, generatedOn);
       }
+      const { data, staleness } = buildBundleData(live);
+      const bundle: BundleData = {
+        pay: chosen.includes("pay") ? data.pay : undefined,
+        budget: chosen.includes("budget") ? data.budget : undefined,
+        projection: chosen.includes("projection") ? data.projection : undefined,
+      };
+      const included = SECTION_ORDER.filter((id) => !!bundle[id]);
+      if (included.length === 0) {
+        setReportError(
+          "Nothing to export yet — the selected tools have no data saved on this device."
+        );
+        return;
+      }
+
+      const formats: Exclude<ReportFormat, "all">[] =
+        reportFormat === "all" ? ["csv", "txt", "pdf"] : [reportFormat];
+      const files: ReportFile[] = [];
+      for (const fmt of formats) {
+        files.push(...(await buildReportFiles(bundle, included, fmt, generatedOn, staleness)));
+      }
+
+      if (reportFormat === "all" || files.length > 1) {
+        const zip = await filesToZipBlob(files);
+        triggerDownload(zip, "application/zip", `activepayos_report_${generatedOn}.zip`);
+      } else {
+        triggerDownload(files[0].data, FORMAT_MIME[reportFormat], files[0].name);
+      }
+    } catch (err) {
+      setReportError(
+        err instanceof Error && err.message
+          ? `Export failed — ${err.message}`
+          : "Export failed — please try again."
+      );
     } finally {
       setReporting(false);
     }
@@ -1565,36 +1692,21 @@ export default function BudgetClient() {
               </span>
             </div>
 
-            {/* -------------------- Budget / combined report -------------------- */}
+            {/* -------------------- Budget / cross-tool report -------------------- */}
             <div className="mt-6">
               <ReportPanel
-                scopes={
-                  transfer
-                    ? [
-                        {
-                          value: "budget",
-                          label: "Budget only",
-                          hint: "Your income, expenses, and leftover.",
-                        },
-                        {
-                          value: "combined",
-                          label: "Combined (pay + budget)",
-                          hint: "One file with your pay summary and full budget.",
-                        },
-                        {
-                          value: "pay",
-                          label: "Pay breakdown only",
-                          hint: "Just the Pay Calculator sheet, rebuilt from your imported pay.",
-                        },
-                      ]
-                    : undefined
-                }
-                scope={reportScope}
-                onScopeChange={(v) => setReportScope(v as ReportScope)}
+                description="Generated entirely in your browser — nothing leaves your device. Other tools' sections are rebuilt from data already saved on this device."
+                sections={reportSections}
+                selectedSections={selectedSections}
+                onSectionsChange={setSelectedSections}
+                formats={REPORT_FORMATS}
                 format={reportFormat}
                 onFormatChange={(v) => setReportFormat(v as ReportFormat)}
                 onDownload={downloadReport}
                 busy={reporting}
+                disabled={selectedAvailableCount === 0}
+                disabledReason="Choose at least one section to include."
+                error={reportError}
               />
             </div>
           </section>

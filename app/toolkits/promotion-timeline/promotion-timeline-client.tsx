@@ -15,6 +15,7 @@ import {
   EventKind,
 } from "@/lib/promotion/timeline";
 import { buildCompensationProjection } from "@/lib/promotion/compensation";
+import ReportPanel from "@/components/ReportPanel";
 
 type ExportFormat = "pdf" | "csv" | "txt";
 
@@ -129,6 +130,9 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+    } catch {
+      // A rejected fetch (offline, dropped connection) must never fail silently.
+      setExportError("Export failed. Please check your connection and try again.");
     } finally {
       setExporting(false);
     }
@@ -247,33 +251,17 @@ export default function PromotionTimelineClient({ basepay }: { basepay: BasePayD
           The final grade shown is the long-range 20-year scenario path, not a promise for the current obligation.
         </p>
 
-        {/* Export controls */}
-        <div className="mt-5 flex flex-wrap items-center gap-2 border-t pt-5">
-          <span className="text-sm font-medium text-gray-700">Export:</span>
-          <select
-            aria-label="Export format"
-            value={format}
-            onChange={(e) => setFormat(e.target.value as ExportFormat)}
-            className="field rounded-full px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-black/20"
-          >
-            {EXPORT_FORMATS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={downloadTimeline}
-            disabled={exporting}
-            className="rounded-full border border-black bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {exporting ? "Preparing..." : "Download"}
-          </button>
-
-          {exportError && (
-            <p role="alert" className="basis-full text-sm text-red-600">
-              {exportError}
-            </p>
-          )}
+        {/* Export — the same standardized report panel as the money tools. */}
+        <div className="mt-5 border-t pt-5">
+          <ReportPanel
+            description="Built by a stateless export route — your scenario generates the file in memory and is never stored."
+            formats={EXPORT_FORMATS}
+            format={format}
+            onFormatChange={(v) => setFormat(v as ExportFormat)}
+            onDownload={downloadTimeline}
+            busy={exporting}
+            error={exportError}
+          />
         </div>
       </section>
 

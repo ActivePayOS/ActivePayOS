@@ -2,10 +2,12 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { buildPaySummary } from "@/lib/export/summary";
+import { buildPaySummary, formatUsd } from "@/lib/export/summary";
 import { generatePayCsv } from "@/lib/export/csv";
 import { generatePayTxt } from "@/lib/export/txt";
-import { generatePayPdf, isPdfLayout, PdfLayout } from "@/lib/export/pdf";
+import { generatePayPdf } from "@/lib/export/pdf";
+import { payOverview } from "@/lib/export/overview";
+import { glossaryFor } from "@/lib/export/glossary";
 
 export const runtime = "nodejs"; // ExcelJS / pdf-lib need Node runtime (not Edge)
 
@@ -22,7 +24,8 @@ type ExportPayload = {
 
   // Output selection. Defaults to "xlsx" for backward compatibility.
   format?: ExportFormat;
-  pdfLayout?: string; // "classic" | "modern" | "compact"
+  /** Accepted for backward compatibility; ignored — one PDF layout ships. */
+  pdfLayout?: string;
 
   basePayMonthly: number;
   bahMonthly: number;
@@ -156,10 +159,10 @@ export async function POST(req: NextRequest) {
       if (format === "txt") {
         return fileResponse(generatePayTxt(summary), "text/plain; charset=utf-8", `${nameBase}.txt`);
       }
-      // format === "pdf"
-      const layout: PdfLayout = isPdfLayout(body.pdfLayout) ? body.pdfLayout : "classic";
-      const pdfBytes = await generatePayPdf(summary, layout);
-      return fileResponse(pdfBytes, "application/pdf", `${nameBase}_${layout}.pdf`);
+      // format === "pdf" — one layout ships (modern); body.pdfLayout is
+      // accepted for backward compatibility and ignored.
+      const pdfBytes = await generatePayPdf(summary);
+      return fileResponse(pdfBytes, "application/pdf", `${nameBase}.pdf`);
     } catch (err) {
       console.error("[export-budget] file generation failed:", err);
       return NextResponse.json({ error: "Could not generate the export file." }, { status: 500 });
@@ -214,6 +217,109 @@ export async function POST(req: NextRequest) {
       `[export-budget] missing sheet(s). Found: ${wb.worksheets.map((w) => w.name).join(", ")}`
     );
     return NextResponse.json({ error: "Could not build the budget file." }, { status: 500 });
+  }
+
+  // ---------------------------------------------------------------------
+  // Computed "Summary" sheet — headline numbers with plain-English notes,
+  // placed FIRST so the workbook opens on the big picture. The template's
+  // own sheets are untouched.
+  // ---------------------------------------------------------------------
+  try {
+    const generatedOn = new Date().toISOString().slice(0, 10);
+    const paySummary = buildPaySummary({
+      year,
+      grade: body.grade ?? "",
+      yosLabel: body.yosLabel ?? "",
+      zip5,
+      receivesBah,
+      dependents: !!body.withDependents,
+      stateOfLegalResidence,
+      baseMonthly: base,
+      bahMonthly: bah,
+      basMonthly: bas,
+      otherMonthly: other,
+      generatedOn,
+    });
+
+    const summarySheet = wb.addWorksheet("Summary");
+    summarySheet.columns = [{ width: 34 }, { width: 20 }, { width: 76 }];
+    const grey = { color: { argb: "FF6B7280" }, size: 10 } as const;
+    let r = 1;
+    const titleCell = summarySheet.getCell(r, 1);
+    titleCell.value = "ActivePayOS — Pay & Budget Summary";
+    titleCell.font = { bold: true, size: 14 };
+    r += 1;
+    summarySheet.getCell(r, 1).value = `Generated ${generatedOn}`;
+    summarySheet.getCell(r, 1).font = grey;
+    r += 2;
+
+    const head = (a: string, b2: string, c: string) => {
+      summarySheet.getCell(r, 1).value = a;
+      summarySheet.getCell(r, 2).value = b2;
+      summarySheet.getCell(r, 3).value = c;
+      summarySheet.getRow(r).font = { bold: true };
+      r += 1;
+    };
+    head("Item", "Value", "What it means");
+    for (const item of payOverview(paySummary)) {
+      summarySheet.getCell(r, 1).value = item.label;
+      summarySheet.getCell(r, 2).value = item.value;
+      summarySheet.getCell(r, 3).value = item.explanation;
+      summarySheet.getCell(r, 3).font = grey;
+      r += 1;
+    }
+    r += 1;
+
+    head("Pay component", "Monthly", "What it is");
+    for (const l of [...paySummary.lines, paySummary.total]) {
+      summarySheet.getCell(r, 1).value = l.label;
+      const v = summarySheet.getCell(r, 2);
+      v.value = l.monthly;
+      v.numFmt = "#,##0.00";
+      const note = glossaryFor(l.label);
+      if (note) {
+        summarySheet.getCell(r, 3).value = note;
+        summarySheet.getCell(r, 3).font = grey;
+      }
+      r += 1;
+    }
+    r += 1;
+
+    head("Suggested target", "Amount", "What it means");
+    const targets: Array<[string, number, string]> = [
+      ["Housing budget", bah * housingTargetPct, "A common target: keep housing at or under BAH."],
+      ["Food budget", bas * foodTargetPct, "BAS is meant to cover the servicemember's own meals."],
+      [
+        "Minimum monthly savings",
+        totalIncome * savingsTargetPct,
+        `${Math.round(savingsTargetPct * 100)}% of total income (${formatUsd(totalIncome)}/mo) - pay yourself first.`,
+      ],
+    ];
+    for (const [label, amount, note] of targets) {
+      summarySheet.getCell(r, 1).value = label;
+      const v = summarySheet.getCell(r, 2);
+      v.value = amount;
+      v.numFmt = "#,##0.00";
+      summarySheet.getCell(r, 3).value = note;
+      summarySheet.getCell(r, 3).font = grey;
+      r += 1;
+    }
+
+    // Order the Summary tab first. ExcelJS keeps sheets sorted by orderNo
+    // (not in the public typings), so give Summary a lower orderNo than the
+    // template sheets and open the workbook on the first tab.
+    (summarySheet as unknown as { orderNo: number }).orderNo = 0;
+    wb.worksheets.forEach((ws, i) => {
+      if (ws.name !== "Summary") {
+        (ws as unknown as { orderNo: number }).orderNo = i + 1;
+      }
+    });
+    wb.views = [
+      { x: 0, y: 0, width: 20000, height: 20000, firstSheet: 0, activeTab: 0, visibility: "visible" },
+    ];
+  } catch (err) {
+    // The Summary sheet is additive — never fail the export over it.
+    console.error("[export-budget] summary sheet generation failed:", err);
   }
 
   // =========================

@@ -10,6 +10,7 @@ import {
   type CareerProjectionInput,
 } from "@/lib/projection/career";
 import { type BasePayDataset } from "@/lib/pay/basepay-lookup";
+import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
 import basepay2026 from "@/data/basepay/2026.json";
 
 const ds = basepay2026 as unknown as BasePayDataset;
@@ -164,5 +165,43 @@ describe("projectCareerWealth", () => {
     expect(r.atSeparation?.yearIndex).toBe(5);
     expect(r.atSeparation?.age).toBe(27);
     expect(r.final.age).toBe(60);
+  });
+
+  it("accumulates the employee TSP share alongside the agency match", () => {
+    const r = projectCareerWealth(BASE);
+    // 5% employee of every month's base pay; agency adds another 5% at full match.
+    const expected = r.payTimeline.reduce((a, p) => a + p.basePayMonthly * 0.05, 0);
+    expect(r.totals.employeeTsp).toBeCloseTo(expected, 6);
+    expect(r.totals.employeeTsp + r.totals.agencyMatch).toBeCloseTo(
+      r.final.balances.tsp,
+      6
+    );
+  });
+
+  it("caps 401(k) employee contributions at the elective-deferral limit; match rides on top", () => {
+    const capMonthly = TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12;
+    const r = projectCareerWealth({
+      ...BASE,
+      serviceYearsRemaining: 0,
+      projectionYears: 1,
+      k401Monthly: capMonthly * 4, // hand-typed way over the IRS limit
+      k401MatchMonthly: 300,
+      k401UntilAge: 99,
+      k401Return: 0,
+    });
+    expect(r.final.balances.k401).toBeCloseTo((capMonthly + 300) * 12, 6);
+  });
+
+  it("leaves under-limit 401(k) contributions (and the match) untouched", () => {
+    const r = projectCareerWealth({
+      ...BASE,
+      serviceYearsRemaining: 0,
+      projectionYears: 2,
+      k401Monthly: 500,
+      k401MatchMonthly: 200,
+      k401UntilAge: 99,
+      k401Return: 0,
+    });
+    expect(r.final.balances.k401).toBeCloseTo(700 * 24, 6);
   });
 });

@@ -4,6 +4,8 @@
 
 export type BasePayDataset = {
   year: number;
+  /** DFAS-published reduced E-1 rate for the first 4 months of service. */
+  e1UnderFourMonthsMonthly?: number;
   tables: Record<string, Record<string, Array<number | null>>>;
 };
 
@@ -32,8 +34,21 @@ function yosYearsToIndex(years: number): number {
 export function basePayFor(
   dataset: BasePayDataset,
   grade: string,
-  years: number
+  years: number,
+  // Total months of service, when the caller tracks time at month granularity.
+  // DFAS pays E-1s a reduced rate for the first 4 months of service; that rate
+  // is only applied when serviceMonths is supplied (and < 4), so existing
+  // three-argument call sites keep returning the standard "2 or less" column.
+  serviceMonths?: number
 ): number | null {
+  if (
+    typeof serviceMonths === "number" &&
+    serviceMonths < 4 &&
+    grade.toUpperCase().trim() === "E-1"
+  ) {
+    const under4 = dataset?.e1UnderFourMonthsMonthly;
+    if (typeof under4 === "number" && Number.isFinite(under4)) return under4;
+  }
   const row = dataset?.tables?.[tableKeyForGrade(grade)]?.[grade];
   if (!row) return null;
   const v = row[yosYearsToIndex(years)];

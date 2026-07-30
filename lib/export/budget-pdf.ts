@@ -4,6 +4,7 @@
 
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { formatUsd } from "./summary";
+import { glossaryFor } from "./glossary";
 import type { BudgetExport, BudgetLine } from "./budget-summary";
 
 const PAGE_W = 612; // US Letter
@@ -92,15 +93,21 @@ export async function generateBudgetPdf(
     page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 1, color: LINE });
     y -= 20;
 
-    const rowH = 24;
     rows.forEach((l, i) => {
+      // A plain-English note (from the site's i-dot copy) adds a muted second
+      // line, so the row grows when there is something worth explaining.
+      const note = glossaryFor(l.label);
+      const rowH = note ? 34 : 24;
       ensureSpace(rowH);
       if (i % 2 === 1) {
-        page.drawRectangle({ x: M, y: y - 6, width: RIGHT - M, height: rowH, color: TINT });
+        page.drawRectangle({ x: M, y: y - (rowH - 18), width: RIGHT - M, height: rowH, color: TINT });
       }
       page.drawText(l.label, { x: M + 8, y, size: 11, font: f.reg, color: INK });
       rightText(page, formatUsd(l.monthly), MONTHLY_RIGHT, y, 11, f.reg, INK);
       rightText(page, formatUsd(l.monthly * 12), RIGHT, y, 11, f.reg, INK);
+      if (note) {
+        page.drawText(note, { x: M + 8, y: y - 10, size: 7, font: f.reg, color: MUTED, maxWidth: RIGHT - M - 16 });
+      }
       y -= rowH;
     });
 
@@ -112,16 +119,7 @@ export async function generateBudgetPdf(
     y -= 34;
   };
 
-  // ---- optional pay lines (combined report) ----
-  if (b.pay) {
-    drawTable("Pay components", b.pay.lines, b.pay.total);
-  }
-
-  // ---- budget ----
-  drawTable("Income", b.income, { label: "Total income", monthly: b.totalIncome });
-  drawTable("Expenses", b.expenses, { label: "Total expenses", monthly: b.totalExpense });
-
-  // ---- leftover box ----
+  // ---- leftover box (the headline) — drawn FIRST, before any tables ----
   ensureSpace(58);
   const boxH = 50;
   const boxY = y - boxH + 10;
@@ -135,7 +133,23 @@ export async function generateBudgetPdf(
     x: M + 20, y: boxY + 12, size: 20, font: f.bold, color: over ? NEGATIVE : ACCENT,
   });
   rightText(page, `${formatUsd(Math.abs(b.leftover) * 12)} /yr`, RIGHT - 20, boxY + 14, 13, f.bold, INK);
-  y = boxY - 30;
+  y = boxY - 16;
+
+  // One-line supporting stats under the box, then the detail tables.
+  page.drawText(
+    `Total income ${formatUsd(b.totalIncome)}/mo   -   Total expenses ${formatUsd(b.totalExpense)}/mo`,
+    { x: M, y, size: 9, font: f.reg, color: MUTED }
+  );
+  y -= 26;
+
+  // ---- optional pay lines (combined report) ----
+  if (b.pay) {
+    drawTable("Pay components", b.pay.lines, b.pay.total);
+  }
+
+  // ---- budget ----
+  drawTable("Income", b.income, { label: "Total income", monthly: b.totalIncome });
+  drawTable("Expenses", b.expenses, { label: "Total expenses", monthly: b.totalExpense });
 
   // ---- optional money-flow chart ----
   if (chart && chart.width > 0 && chart.height > 0) {

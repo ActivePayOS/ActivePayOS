@@ -14,6 +14,12 @@ type LiveModelPayload = {
   currentAge: number;
   serviceYears: number;
   projectionYears: number;
+  /**
+   * Optional long-term horizon (e.g. to age 65). When present and larger than
+   * projectionYears, the Projection sheet extends to it, so the "Long-term
+   * analysis" scope carries into the live Excel model too.
+   */
+  longTermYears?: number;
   inflationPct: number;
   balances: { tsp: number; ira: number; invest: number; savings: number };
   returnsPct: { tsp: number; ira: number; k401: number; invest: number; savings: number };
@@ -58,12 +64,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const baseYears = clamp(Math.round(num(raw.projectionYears, 20)), 1, 70);
   const p = {
     grade: safeFilePart(raw.grade, "grade"),
     startYear: clamp(Math.round(num(raw.startYear, new Date().getFullYear())), 2000, 2100),
     currentAge: clamp(Math.round(num(raw.currentAge, 22)), 17, 90),
     serviceYears: clamp(num(raw.serviceYears, 5), 0, 40),
-    projectionYears: clamp(Math.round(num(raw.projectionYears, 20)), 1, 70),
+    // Honor an optional longTermYears horizon (long-term scope) when it
+    // extends past the on-screen projection horizon.
+    projectionYears: clamp(Math.max(baseYears, Math.round(num(raw.longTermYears, 0))), 1, 70),
     inflationPct: clamp(num(raw.inflationPct, 2.5), 0, 15),
     balances: {
       tsp: clamp(num(raw.balances?.tsp), 0, 1e9),
@@ -95,6 +104,13 @@ export async function POST(req: NextRequest) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "ActivePayOS";
   wb.created = new Date();
+
+  // ----------------------------------------------------------------- Summary
+  // Created FIRST so the workbook opens on the big picture. The cells are
+  // filled after the Assumptions/Projection sheets exist (their formulas
+  // reference those sheets, so the Summary stays live too).
+  const summary = wb.addWorksheet("Summary");
+  summary.columns = [{ width: 34 }, { width: 18 }, { width: 76 }];
 
   // ---------------------------------------------------------------- Read me
   const readme = wb.addWorksheet("Read me");
@@ -256,6 +272,72 @@ export async function POST(req: NextRequest) {
   }
   for (let r = 2; r <= p.projectionYears + 2; r += 1) {
     for (const c of [4, 5, 6, 7, 8, 9, 10]) s.getRow(r).getCell(c).numFmt = money;
+  }
+
+  // ------------------------------------------------- Summary (filled last)
+  // Live formulas against the Projection/Assumptions sheets, so the headline
+  // numbers recalculate right along with the model.
+  {
+    const lastRow = p.projectionYears + 2;
+    const grey = { color: { argb: "FF6B7280" }, size: 10 } as const;
+    let r = 1;
+    const t = summary.getCell(r, 1);
+    t.value = "ActivePayOS — Wealth Projection Summary";
+    t.font = { bold: true, size: 14 };
+    r += 1;
+    summary.getCell(r, 1).value =
+      "Recalculates live — edit the yellow cells on the Assumptions sheet and these numbers update.";
+    summary.getCell(r, 1).font = grey;
+    r += 2;
+
+    summary.getCell(r, 1).value = "Item";
+    summary.getCell(r, 2).value = "Value";
+    summary.getCell(r, 3).value = "What it means";
+    summary.getRow(r).font = { bold: true };
+    r += 1;
+
+    const line = (label: string, value: ExcelJS.CellValue, note: string, fmt?: string) => {
+      summary.getCell(r, 1).value = label;
+      const cell = summary.getCell(r, 2);
+      cell.value = value;
+      if (fmt) cell.numFmt = fmt;
+      summary.getCell(r, 3).value = note;
+      summary.getCell(r, 3).font = grey;
+      r += 1;
+    };
+
+    line(
+      `Projected total (${p.startYear + p.projectionYears})`,
+      { formula: `Projection!I${lastRow}` },
+      "Everything combined - TSP, IRA, 401(k), investments, and savings - at the end of the horizon, in future (nominal) dollars.",
+      money
+    );
+    line(
+      "In today's dollars",
+      { formula: `Projection!J${lastRow}` },
+      "The same total deflated by the inflation assumption - what it would buy in today's money.",
+      money
+    );
+    line(
+      "At separation",
+      {
+        formula: `IF(${A(rServe)}>0,LOOKUP(2,1/(Projection!$C$2:$C$${lastRow}=1),Projection!$I$2:$I$${lastRow}),"-")`,
+      },
+      "Your combined balance in the last year still serving - after that, military TSP contributions stop and balances keep compounding.",
+      money
+    );
+    line(
+      "Starting balances (total)",
+      { formula: `${A(rTspBal)}+${A(rIraBal)}+${A(rInvBal)}+${A(rSavBal)}` },
+      "What the accounts already hold today, before any projected growth.",
+      money
+    );
+    line(
+      "Years projected",
+      { formula: `Projection!A${lastRow}-Projection!A2` },
+      "The projection horizon in years, ending at the projected-total year above.",
+      "0"
+    );
   }
 
   const buffer = await wb.xlsx.writeBuffer();

@@ -27,6 +27,8 @@ export type SpecialPayPreset = {
 
 export const SPECIAL_PAY_PRESETS: SpecialPayPreset[] = [
   { label: "Hostile Fire / Imminent Danger Pay", monthly: 225, taxable: false },
+  // Raised from $250 effective 2025-12-18 (FY26 NDAA).
+  { label: "Family Separation Allowance (FSA)", monthly: 300, taxable: false },
   { label: "Flight Pay (ACIP / HDIP-air)", monthly: 250, taxable: true },
   { label: "Parachute (Jump) Pay", monthly: 150, taxable: true },
   { label: "HALO Parachute Pay", monthly: 225, taxable: true },

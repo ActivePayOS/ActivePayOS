@@ -187,7 +187,8 @@ export function buildCompensationProjection(
   for (let m = 0; m < RETIREMENT_HORIZON_MONTHS; m++) {
     const grade = gradeAtMonth(m);
     const years = m / 12;
-    const base = basePayFor(dataset, grade, years) ?? 0;
+    // Passing service months applies the reduced E-1 first-4-months rate.
+    const base = basePayFor(dataset, grade, years, m) ?? 0;
     const bas = getBAS(year, grade) ?? 0;
     const bah = bahForGrade(grade);
     const untax = bas + bah;

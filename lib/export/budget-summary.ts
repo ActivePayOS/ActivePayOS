@@ -4,6 +4,8 @@
 // Builder's "nothing sent to a server" promise holds for exports too.
 
 import { PaySummary, formatUsd, formatPlain } from "./summary";
+import { budgetOverview } from "./overview";
+import { glossaryFor } from "./glossary";
 
 export type BudgetLine = { label: string; monthly: number };
 
@@ -42,6 +44,14 @@ export function generateBudgetCsv(b: BudgetExport): string {
   lines.push(row(["ActivePayOS Budget"]));
   lines.push(row(["Generated", b.generatedOn]));
 
+  // High-level summary first: leftover / income / expenses with what they mean.
+  lines.push("");
+  lines.push(row(["SUMMARY", "", ""]));
+  lines.push(row(["Item", "Value", "What it means"]));
+  for (const item of budgetOverview(b)) {
+    lines.push(row([item.label, item.value, item.explanation]));
+  }
+
   if (b.pay) {
     lines.push("");
     lines.push(row(["Pay context", ""]));
@@ -53,18 +63,18 @@ export function generateBudgetCsv(b: BudgetExport): string {
   }
 
   lines.push("");
-  lines.push(row(["Income", "Monthly (USD)", "Annual (USD)"]));
+  lines.push(row(["Income", "Monthly (USD)", "Annual (USD)", "What it is"]));
   for (const l of b.income) {
-    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.monthly * 12)]));
+    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.monthly * 12), glossaryFor(l.label) ?? ""]));
   }
-  lines.push(row(["Total income", formatPlain(b.totalIncome), formatPlain(b.totalIncome * 12)]));
+  lines.push(row(["Total income", formatPlain(b.totalIncome), formatPlain(b.totalIncome * 12), ""]));
 
   lines.push("");
-  lines.push(row(["Expense", "Monthly (USD)", "Annual (USD)"]));
+  lines.push(row(["Expense", "Monthly (USD)", "Annual (USD)", "What it is"]));
   for (const l of b.expenses) {
-    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.monthly * 12)]));
+    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.monthly * 12), glossaryFor(l.label) ?? ""]));
   }
-  lines.push(row(["Total expenses", formatPlain(b.totalExpense), formatPlain(b.totalExpense * 12)]));
+  lines.push(row(["Total expenses", formatPlain(b.totalExpense), formatPlain(b.totalExpense * 12), ""]));
 
   lines.push("");
   lines.push(row(["Leftover (income - expenses)", formatPlain(b.leftover), formatPlain(b.leftover * 12)]));
@@ -82,6 +92,10 @@ export function generateBudgetCsv(b: BudgetExport): string {
   }
   if (b.leftover > 0) {
     lines.push(row(["Total Income", "Leftover / Unallocated", formatPlain(b.leftover)]));
+  } else if (b.leftover < 0) {
+    // Overspent: outflows exceed income, so a shortfall edge feeds the pool —
+    // income + overspend = expenses, and a reconstructed Sankey balances.
+    lines.push(row(["Overspent (not covered by income)", "Total Income", formatPlain(-b.leftover)]));
   }
 
   return lines.join("\n") + "\n";
@@ -111,7 +125,11 @@ function section(title: string, rows: BudgetLine[], total: BudgetLine): string[]
   const out: string[] = [];
   out.push(tRow(title, "Monthly", "Annual"));
   out.push("-".repeat(rule));
-  rows.forEach((l, i) => out.push(tRow(l.label, monthlyStrs[i], annualStrs[i])));
+  rows.forEach((l, i) => {
+    out.push(tRow(l.label, monthlyStrs[i], annualStrs[i]));
+    const note = glossaryFor(l.label);
+    if (note) out.push(`    - ${note}`);
+  });
   out.push("-".repeat(rule));
   out.push(tRow(total.label, monthlyStrs[all.length - 1], annualStrs[all.length - 1]));
   return out;
@@ -121,6 +139,16 @@ export function generateBudgetTxt(b: BudgetExport): string {
   const out: string[] = [];
   out.push("ActivePayOS - Budget Summary");
   out.push("============================");
+  out.push("");
+
+  // Headline block first: leftover / income / expenses with what they mean.
+  out.push("SUMMARY");
+  const overview = budgetOverview(b);
+  const ovWidth = Math.max(...overview.map((o) => o.label.length)) + 2;
+  for (const o of overview) {
+    out.push(`${padRight(o.label + ":", ovWidth)} ${o.value}`);
+    out.push(`${" ".repeat(ovWidth + 1)}- ${o.explanation}`);
+  }
   out.push("");
 
   if (b.pay) {

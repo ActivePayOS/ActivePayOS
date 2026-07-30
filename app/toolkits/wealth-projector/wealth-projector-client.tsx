@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { fmtUSD0 } from "@/lib/sankey/model";
 import {
@@ -50,7 +50,7 @@ import PlanFlow from "@/components/PlanFlow";
 import Explain from "@/components/Explain";
 import InfoDot from "@/components/InfoDot";
 import HoverHint from "@/components/HoverHint";
-import { loadPaySnapshot } from "@/lib/profile/handoff";
+import { loadPaySnapshot, saveProjectionSnapshot } from "@/lib/profile/handoff";
 import { getBahLookup } from "@/lib/pay/bah";
 import {
   generateProjectionCsv,
@@ -58,6 +58,16 @@ import {
   type ProjectionExport,
 } from "@/lib/export/projection";
 import { generateProjectionPdf } from "@/lib/export/projection-pdf";
+import {
+  availabilityForSections,
+  buildBundleData,
+  BUNDLE_SECTION_LABELS,
+  generateBundleCsv,
+  generateBundlePdf,
+  generateBundleTxt,
+  type BundleData,
+} from "@/lib/export/bundle";
+import { filesToZipBlob } from "@/lib/export/zip";
 import { downloadPng, downloadSvg, svgToPngBytes } from "@/lib/sankey/export";
 
 const emptySubscribe = () => () => {};
@@ -65,6 +75,11 @@ const emptySubscribe = () => () => {};
 type ReturnPreset = "longRun" | "tenYear" | "custom";
 type HorizonMode = "separation" | "age";
 type ResultTab = "growth" | "pay" | "flows" | "tradespace" | "table";
+type ReportFormat = "csv" | "txt" | "pdf" | "xlsx" | "all";
+
+// Cross-tool report sections, in the site's canonical Pay → Budget → Project
+// order (SiteHeader / PlanFlow use the same ordering).
+const SECTION_ORDER = ["pay", "budget", "projection"] as const;
 
 const RESULT_TABS: { value: ResultTab; label: string }[] = [
   { value: "growth", label: "Growth" },
@@ -230,9 +245,15 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [k401Type, setK401Type] = useState<"traditional" | "roth">("traditional");
   const [k401UntilAge, setK401UntilAge] = useState(65);
   const [k401ReturnPct, setK401ReturnPct] = useState(PERF.otherAssets.sp500LongRunPct);
-  const k401Monthly =
-    (Math.max(0, civSalary) / 12) *
-    ((Math.max(0, k401Pct) + Math.max(0, k401MatchPct)) / 100);
+  // Employee share honors the IRS elective-deferral limit (the Max button
+  // targets it, and the engine enforces it); the employer match rides on top
+  // uncapped — it doesn't count against the employee limit.
+  const k401EmployeeMonthly = Math.min(
+    (Math.max(0, civSalary) / 12) * (Math.max(0, k401Pct) / 100),
+    TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
+  );
+  const k401MatchMonthly = (Math.max(0, civSalary) / 12) * (Math.max(0, k401MatchPct) / 100);
+  const k401Monthly = k401EmployeeMonthly + k401MatchMonthly;
 
   // ---- Per-account switches: an off account collapses its box and is
   // excluded from the projection, charts, table, and reports. TSP stays —
@@ -274,12 +295,23 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   // columns); side-by-side is the classic 380px inputs rail.
   const [stackedLayout, setStackedLayout] = useState(false);
 
-  // ---- Exports (all generated in-browser) ----
-  const [reportFormat, setReportFormat] = useState<"csv" | "txt" | "pdf" | "xlsx">("csv");
+  // ---- Exports (csv/txt/pdf in-browser; xlsx via the stateless route) ----
+  const [reportFormat, setReportFormat] = useState<ReportFormat>("csv");
   const [reportScope, setReportScope] = useState<"standard" | "longterm">("standard");
+  const [reportSections, setReportSections] = useState<string[]>(["projection"]);
+  const [exportError, setExportError] = useState<string | null>(null);
+  // One-shot read of which other tools have data on this device (same
+  // mount-time pattern as the pay snapshot / budget candidates above).
+  const [sectionAvailability] = useState<
+    readonly { id: string; available: boolean; hint?: string }[] | null
+  >(() => (typeof window === "undefined" ? null : availabilityForSections()));
   const [exporting, setExporting] = useState(false);
   // Offscreen light-themed chart used for PNG/SVG/PDF export from any tab.
   const exportChartRef = useRef<SVGSVGElement>(null);
+  // Second offscreen chart re-projected to the long-term horizon, so the
+  // Long-term report's PDF embeds a chart drawn from the SAME data as its
+  // numbers (not the shorter on-screen horizon).
+  const longTermChartRef = useRef<SVGSVGElement>(null);
 
   // ---- Derived ----
   const fundReturns = useMemo(() => {
@@ -312,6 +344,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const iraMonthlyEff = iraOn ? iraMonthly : 0;
   const iraMonthlyAfterEff = iraOn ? iraMonthlyAfter : 0;
   const k401MonthlyEff = k401On ? k401Monthly : 0;
+  const k401EmployeeMonthlyEff = k401On ? k401EmployeeMonthly : 0;
+  const k401MatchMonthlyEff = k401On ? k401MatchMonthly : 0;
   const invBalanceEff = invOn ? invBalance : 0;
   const invMonthlyEff = invOn ? invMonthly : 0;
   const invMonthlyAfterEff = invOn ? invMonthlyAfter : 0;
@@ -348,7 +382,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       iraMonthlyAfter: iraMonthlyAfterEff,
       iraUntilAge,
       iraReturn: iraReturnNetPct / 100,
-      k401Monthly: k401MonthlyEff,
+      k401Monthly: k401EmployeeMonthlyEff,
+      k401MatchMonthly: k401MatchMonthlyEff,
       k401UntilAge,
       k401Return: k401ReturnPct / 100,
       inflation: Math.max(0, inflationPct) / 100,
@@ -381,7 +416,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       iraMonthlyAfterEff,
       iraUntilAge,
       iraReturnNetPct,
-      k401MonthlyEff,
+      k401EmployeeMonthlyEff,
+      k401MatchMonthlyEff,
       k401UntilAge,
       k401ReturnPct,
       inflationPct,
@@ -389,6 +425,20 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   );
 
   const projection = useMemo(() => projectCareerWealth(careerInput), [careerInput]);
+
+  // The long-term analysis always carries the projection to at least age 65,
+  // regardless of the on-screen horizon. Memoized here so the export numbers,
+  // the PDF's embedded chart, and the live Excel payload all share the SAME
+  // re-projected data (the chart used to be rasterized at the on-screen
+  // horizon while the long-term numbers ran to 65).
+  const longTermYears = Math.max(projectionYears, Math.min(70, Math.max(1, 65 - currentAge)));
+  const longTermProjection = useMemo(
+    () =>
+      longTermYears === projectionYears
+        ? projection
+        : projectCareerWealth({ ...careerInput, projectionYears: longTermYears }),
+    [careerInput, projection, projectionYears, longTermYears]
+  );
 
   // Same projection with zero fund fees — the difference is the dollars lost
   // to expense ratios over the horizon ("fee drag").
@@ -499,6 +549,27 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     return sep.balances.tsp * Math.pow(1 + tspReturn, yearsAfter);
   }, [projection.atSeparation, projectionYears, tspReturn]);
 
+  // High-3 pension ballpark once the scenario reaches 20 total years: the
+  // multiplier (2.5%/yr legacy, 2.0%/yr BRS) x total years x final projected
+  // base pay as the high-3 proxy. Estimate only — real pensions average the
+  // highest 36 months of base pay and exact creditable service.
+  const pensionEstimate = useMemo(() => {
+    const serviceYearsTotal = Math.max(0, yosNow) + serviceYears;
+    if (serviceYears <= 0 || serviceYearsTotal < 20) return null;
+    const finalBasePay =
+      projection.payTimeline.length > 0
+        ? projection.payTimeline[projection.payTimeline.length - 1].basePayMonthly
+        : 0;
+    if (finalBasePay <= 0) return null;
+    const multiplierPct = brs ? 2.0 : 2.5;
+    return {
+      multiplierPct,
+      serviceYearsTotal,
+      high3MonthlyBase: finalBasePay,
+      monthlyPension: (multiplierPct / 100) * serviceYearsTotal * finalBasePay,
+    };
+  }, [projection.payTimeline, yosNow, serviceYears, brs]);
+
   const doubling = yearsToDouble(tspReturn);
   const allocTotal = FUND_KEYS.reduce((a, k) => a + (alloc[k] || 0), 0);
   const startBalances = {
@@ -534,14 +605,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   function buildProjectionExport(scope: "standard" | "longterm"): ProjectionExport {
     const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? branch;
 
-    // The long-term analysis always carries the projection to at least age 65,
-    // regardless of the on-screen horizon.
-    const projYears =
-      scope === "longterm"
-        ? Math.max(projectionYears, Math.min(70, Math.max(1, 65 - currentAge)))
-        : projectionYears;
-    const proj =
-      projYears === projectionYears ? projection : projectCareerWealth({ ...careerInput, projectionYears: projYears });
+    // The long-term scope reuses the shared to-age-65 projection so the
+    // report numbers and the embedded chart come from identical data.
+    const projYears = scope === "longterm" ? longTermYears : projectionYears;
+    const proj = scope === "longterm" ? longTermProjection : projection;
     const endYr = startYear + projYears;
 
     // Fee drag at this horizon: same projection with zero fund fees.
@@ -576,12 +643,14 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             }
           : {}),
         ...(k401MonthlyEff > 0
-          ? { k401Monthly: k401MonthlyEff, k401UntilAge, k401ReturnPct }
+          ? { k401Monthly: k401MonthlyEff, k401UntilAge, k401ReturnPct, k401Type }
           : {}),
         inflationPct,
         payRaisePct,
         modelPromotions,
       },
+      // Mirrors the on-screen table: switched-off accounts drop their columns.
+      activeAccounts: { invest: invOn, savings: savOn },
       promotions: proj.promotions.map((p) => ({
         year: startYear + Math.floor(p.monthIndex / 12),
         grade: p.toGrade,
@@ -609,7 +678,16 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
         contributed: proj.totals.contributed,
         growth: proj.totals.growth,
         agencyMatch: proj.totals.agencyMatch,
+        employeeTsp: proj.totals.employeeTsp,
       },
+      ...(pensionEstimate
+        ? {
+            pension: {
+              ...pensionEstimate,
+              note: "Estimate - uses your final projected base pay as the High-3 proxy. Actual pensions average the highest 36 months of base pay and exact creditable service; verify with DFAS.",
+            },
+          }
+        : {}),
       fees: {
         tspExpenseRatioPct: tspFeePct,
         iraExpenseRatioPct:
@@ -659,6 +737,29 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     };
   }
 
+  // Persist the latest projection to localStorage (debounced ~600ms after the
+  // projection settles) so the Pay Calculator and Budget Builder can include
+  // this tool's report in their bundled exports — the same silent hand-off
+  // pattern the pay snapshot uses. Best-effort: failures never disturb the page.
+  const buildExportRef = useRef<((scope: "standard" | "longterm") => ProjectionExport) | null>(null);
+  useEffect(() => {
+    buildExportRef.current = buildProjectionExport;
+  });
+  useEffect(() => {
+    if (!mounted) return;
+    const t = window.setTimeout(() => {
+      try {
+        const build = buildExportRef.current;
+        if (build) saveProjectionSnapshot(build("standard"));
+      } catch {
+        // best-effort only
+      }
+    }, 600);
+    return () => window.clearTimeout(t);
+    // Re-arm whenever anything the "standard" export reads has settled;
+    // `projection` already folds in every career/account input.
+  }, [mounted, projection, rothTrade, invOn, savOn, k401Type, pensionEstimate]);
+
   function triggerDownload(body: BlobPart, mime: string, filename: string) {
     const url = window.URL.createObjectURL(new Blob([body], { type: mime }));
     const a = document.createElement("a");
@@ -670,74 +771,206 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     window.URL.revokeObjectURL(url);
   }
 
+  // Section pills shown in the report panel — the projection is always
+  // available (it's this page, computed live); pay/budget depend on what the
+  // other tools have saved on this device.
+  const sectionOptions = SECTION_ORDER.map((id) => {
+    const avail = sectionAvailability?.find((a) => a.id === id);
+    return {
+      id,
+      label: BUNDLE_SECTION_LABELS[id],
+      available: id === "projection" ? true : avail?.available ?? false,
+      hint: id === "projection" ? undefined : avail?.hint,
+    };
+  });
+
+  // Live Excel model: assumptions + formula-driven projection, built by the
+  // stateless export route (same in-memory pattern as the budget's Excel
+  // export — nothing is stored server-side). The long-term scope sends the
+  // extended horizon so the workbook covers the same years as the report.
+  async function fetchProjectionWorkbook(): Promise<Blob> {
+    const res = await fetch("/api/export-projection-xlsx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grade,
+        startYear,
+        currentAge,
+        serviceYears,
+        projectionYears: reportScope === "longterm" ? longTermYears : projectionYears,
+        ...(reportScope === "longterm" ? { longTermYears } : {}),
+        inflationPct,
+        balances: {
+          tsp: tspBalance,
+          ira: iraBalanceEff,
+          invest: invBalanceEff,
+          savings: savBalanceEff,
+        },
+        returnsPct: {
+          tsp: Math.round(tspReturn * 1000) / 10,
+          ira: Math.round(iraReturnNetPct * 100) / 100,
+          k401: k401ReturnPct,
+          invest: invReturnPct,
+          savings: savApyPct,
+        },
+        monthly: {
+          tspTotal: Math.round((employeeNow + agencyNow) * 100) / 100,
+          iraServing: iraMonthlyEff,
+          iraAfter: iraMonthlyAfterEff,
+          iraUntilAge,
+          k401After: k401MonthlyEff,
+          k401UntilAge,
+          invServing: invMonthlyEff,
+          invAfter: invMonthlyAfterEff,
+          savServing: savMonthlyEff,
+          savAfter: savMonthlyAfterEff,
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`Export failed (${res.status})`);
+    return res.blob();
+  }
+
+  // Growth chart PNG for PDFs — rasterized from the offscreen chart that
+  // matches the report scope (the long-term one is re-projected to age 65).
+  async function reportChartPng(): Promise<Uint8Array | undefined> {
+    const svg =
+      reportScope === "longterm" && longTermChartRef.current
+        ? longTermChartRef.current
+        : exportChartRef.current;
+    if (!svg) return undefined;
+    try {
+      return await svgToPngBytes(svg, 2, "#ffffff");
+    } catch {
+      return undefined; // fall back to a chartless PDF
+    }
+  }
+
   async function downloadReport() {
+    setExportError(null);
     setExporting(true);
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      const selected = SECTION_ORDER.filter(
+        (id) =>
+          reportSections.includes(id) && sectionOptions.find((s) => s.id === id)?.available
+      );
+      if (selected.length === 0) return; // button is disabled in this state
+      const projectionOnly = selected.length === 1 && selected[0] === "projection";
+
       const data = buildProjectionExport(reportScope);
       const stem =
         reportScope === "longterm"
           ? `activepayos_WealthProjection_LongTerm_${grade}_${data.scenario.endYear}`
           : `activepayos_WealthProjection_${grade}_${endYear}`;
-      if (reportFormat === "xlsx") {
-        // Live Excel model: assumptions + formula-driven projection, built by
-        // the stateless export route (same in-memory pattern as the budget's
-        // Excel export — nothing is stored server-side).
-        const res = await fetch("/api/export-projection-xlsx", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grade,
-            startYear,
-            currentAge,
-            serviceYears,
-            projectionYears,
-            inflationPct,
-            balances: {
-              tsp: tspBalance,
-              ira: iraBalanceEff,
-              invest: invBalanceEff,
-              savings: savBalanceEff,
-            },
-            returnsPct: {
-              tsp: Math.round(tspReturn * 1000) / 10,
-              ira: Math.round(iraReturnNetPct * 100) / 100,
-              k401: k401ReturnPct,
-              invest: invReturnPct,
-              savings: savApyPct,
-            },
-            monthly: {
-              tspTotal: Math.round((employeeNow + agencyNow) * 100) / 100,
-              iraServing: iraMonthlyEff,
-              iraAfter: iraMonthlyAfterEff,
-              iraUntilAge,
-              k401After: k401MonthlyEff,
-              k401UntilAge,
-              invServing: invMonthlyEff,
-              invAfter: invMonthlyAfterEff,
-              savServing: savMonthlyEff,
-              savAfter: savMonthlyAfterEff,
-            },
-          }),
-        });
-        if (!res.ok) throw new Error(`Export failed (${res.status})`);
-        const blob = await res.blob();
-        triggerDownload(blob, blob.type, `${stem}.xlsx`);
-      } else if (reportFormat === "csv") {
-        triggerDownload(generateProjectionCsv(data), "text/csv;charset=utf-8", `${stem}.csv`);
-      } else if (reportFormat === "txt") {
-        triggerDownload(generateProjectionTxt(data), "text/plain;charset=utf-8", `${stem}.txt`);
-      } else {
-        let chartPng: Uint8Array | undefined;
-        if (exportChartRef.current) {
-          try {
-            chartPng = await svgToPngBytes(exportChartRef.current, 2, "#ffffff");
-          } catch {
-            // fall back to a chartless PDF
-          }
+
+      if (projectionOnly) {
+        // Single-section paths — identical to the classic per-format exports.
+        if (reportFormat === "csv") {
+          triggerDownload(generateProjectionCsv(data), "text/csv;charset=utf-8", `${stem}.csv`);
+        } else if (reportFormat === "txt") {
+          triggerDownload(generateProjectionTxt(data), "text/plain;charset=utf-8", `${stem}.txt`);
+        } else if (reportFormat === "pdf") {
+          const bytes = await generateProjectionPdf(data, await reportChartPng());
+          triggerDownload(new Uint8Array(bytes), "application/pdf", `${stem}.pdf`);
+        } else if (reportFormat === "xlsx") {
+          const blob = await fetchProjectionWorkbook();
+          triggerDownload(blob, blob.type, `${stem}.xlsx`);
+        } else {
+          // Everything: every format of this report, one zip.
+          const [workbook, pdfBytes] = await Promise.all([
+            fetchProjectionWorkbook(),
+            (async () => generateProjectionPdf(data, await reportChartPng()))(),
+          ]);
+          const zip = await filesToZipBlob([
+            { name: `${stem}.csv`, data: generateProjectionCsv(data) },
+            { name: `${stem}.txt`, data: generateProjectionTxt(data) },
+            { name: `${stem}.pdf`, data: new Uint8Array(pdfBytes) },
+            { name: `${stem}.xlsx`, data: workbook },
+          ]);
+          triggerDownload(zip, "application/zip", `activepayos_report_${today}.zip`);
         }
-        const bytes = await generateProjectionPdf(data, chartPng);
-        triggerDownload(new Uint8Array(bytes), "application/pdf", `${stem}.pdf`);
+        return;
       }
+
+      // Cross-tool bundle: the live projection wins; pay/budget come from the
+      // localStorage hand-off snapshots the other tools already write. The
+      // staleness notes tell readers which numbers came from storage.
+      const { data: loaded, staleness } = buildBundleData(
+        selected.includes("projection") ? { projection: data } : {}
+      );
+      const bundle: BundleData = {
+        ...(selected.includes("pay") && loaded.pay ? { pay: loaded.pay } : {}),
+        ...(selected.includes("budget") && loaded.budget ? { budget: loaded.budget } : {}),
+        ...(selected.includes("projection") ? { projection: data } : {}),
+      };
+      const included = SECTION_ORDER.filter((id) => bundle[id] !== undefined);
+      if (included.length === 0) {
+        setExportError("None of the selected tools has data saved on this device yet.");
+        return;
+      }
+      const bundleStem = `activepayos_report_${today}`;
+      const bundlePdf = async () =>
+        generateBundlePdf(
+          bundle,
+          bundle.projection ? { projection: await reportChartPng() } : undefined,
+          staleness
+        );
+      const workbookName = `activepayos_WealthModel_${grade}_${
+        reportScope === "longterm" ? startYear + longTermYears : endYear
+      }.xlsx`;
+
+      if (reportFormat === "csv") {
+        triggerDownload(
+          generateBundleCsv(bundle, staleness),
+          "text/csv;charset=utf-8",
+          `${bundleStem}.csv`
+        );
+      } else if (reportFormat === "txt") {
+        triggerDownload(
+          generateBundleTxt(bundle, staleness),
+          "text/plain;charset=utf-8",
+          `${bundleStem}.txt`
+        );
+      } else if (reportFormat === "pdf") {
+        const bytes = await bundlePdf();
+        triggerDownload(new Uint8Array(bytes), "application/pdf", `${bundleStem}.pdf`);
+      } else if (reportFormat === "xlsx") {
+        // Excel workbooks are per-tool, built from live inputs by their own
+        // pages' API routes — from here only the projection workbook exists.
+        // The other tools' numbers travel in CSV / Text / PDF / zip instead.
+        if (!bundle.projection) {
+          setExportError(
+            "The Excel model is built from this page's live projection. Include the Wealth Projector section, or choose CSV, Text, or PDF for a cross-tool report."
+          );
+          return;
+        }
+        const workbook = await fetchProjectionWorkbook();
+        if (included.length > 1) {
+          triggerDownload(
+            await filesToZipBlob([{ name: workbookName, data: workbook }]),
+            "application/zip",
+            `${bundleStem}.zip`
+          );
+        } else {
+          triggerDownload(workbook, workbook.type, workbookName);
+        }
+      } else {
+        // Everything: combined csv/txt/pdf plus this page's workbook, one zip.
+        const files: { name: string; data: Blob | string | Uint8Array }[] = [
+          { name: `${bundleStem}.csv`, data: generateBundleCsv(bundle, staleness) },
+          { name: `${bundleStem}.txt`, data: generateBundleTxt(bundle, staleness) },
+          { name: `${bundleStem}.pdf`, data: new Uint8Array(await bundlePdf()) },
+        ];
+        if (bundle.projection) {
+          files.push({ name: workbookName, data: await fetchProjectionWorkbook() });
+        }
+        triggerDownload(await filesToZipBlob(files), "application/zip", `${bundleStem}.zip`);
+      }
+    } catch {
+      setExportError(
+        "Export failed — nothing was downloaded. Check your connection and try again."
+      );
     } finally {
       setExporting(false);
     }
@@ -2355,6 +2588,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
               {/* Exports — standardized report panel + chart images */}
               <div className="mt-4 space-y-2">
                 <ReportPanel
+                  description="CSV, text, and PDF are generated entirely in your browser. The Excel model is built by a stateless server route — used once, never stored."
                   scopes={[
                     {
                       value: "standard",
@@ -2369,16 +2603,23 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   ]}
                   scope={reportScope}
                   onScopeChange={(v) => setReportScope(v as "standard" | "longterm")}
+                  sections={sectionOptions}
+                  selectedSections={reportSections}
+                  onSectionsChange={setReportSections}
                   formats={[
                     { value: "csv", label: "CSV — any spreadsheet" },
                     { value: "xlsx", label: "Excel — live model (edit & recalc)" },
                     { value: "txt", label: "Text — plain summary" },
                     { value: "pdf", label: "PDF — printable, with chart" },
+                    { value: "all", label: "Everything (.zip)" },
                   ]}
                   format={reportFormat}
-                  onFormatChange={(v) => setReportFormat(v as "csv" | "txt" | "pdf" | "xlsx")}
+                  onFormatChange={(v) => setReportFormat(v as ReportFormat)}
                   onDownload={downloadReport}
                   busy={exporting}
+                  disabled={reportSections.length === 0}
+                  disabledReason="Pick at least one tool to include in the report."
+                  error={exportError}
                 />
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -2414,11 +2655,32 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     )} at age ${currentAge + projectionYears} without another dollar added. That's what your service time gets you.`}
                   </li>
                 )}
-                {brs && projection.totals.agencyMatch > 0 && (
+                {(projection.totals.employeeTsp > 0 ||
+                  (brs && projection.totals.agencyMatch > 0)) && (
                   <li>
-                    {`The BRS match contributes ${fmtUSD0(
-                      projection.totals.agencyMatch
-                    )} of agency money across your service window — pay you only receive by contributing.`}
+                    {projection.totals.employeeTsp > 0
+                      ? `You contributed ${fmtUSD0(
+                          projection.totals.employeeTsp
+                        )} into TSP from your own pay across your service window` +
+                        (brs && projection.totals.agencyMatch > 0
+                          ? `, and the BRS match adds ${fmtUSD0(
+                              projection.totals.agencyMatch
+                            )} of agency money on top — pay you only receive by contributing.`
+                          : `.`)
+                      : `The BRS match contributes ${fmtUSD0(
+                          projection.totals.agencyMatch
+                        )} of agency money across your service window — pay you only receive by contributing.`}
+                  </li>
+                )}
+                {pensionEstimate && (
+                  <li>
+                    {`At ${pensionEstimate.serviceYearsTotal} total years you'd be pension-eligible: roughly ${fmtUSD0(
+                      pensionEstimate.monthlyPension
+                    )}/mo as a ${brs ? "BRS" : "High-3"} pension (estimate — ${
+                      pensionEstimate.multiplierPct
+                    }%/yr × ${pensionEstimate.serviceYearsTotal} years × your final ${fmtUSD0(
+                      pensionEstimate.high3MonthlyBase
+                    )}/mo base pay as the High-3 proxy). That's on top of everything above and isn't counted in these totals.`}
                   </li>
                 )}
                 <li>
@@ -2542,6 +2804,21 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 svgRef={exportChartRef}
               />
             </div>
+            {/* Offscreen chart at the long-term (to age 65) horizon — the
+                Long-term report PDF embeds this one so chart and numbers
+                always cover the same years. */}
+            {reportScope === "longterm" && longTermProjection !== projection && (
+              <div aria-hidden className="pointer-events-none absolute -left-[9999px] top-0 w-[920px]">
+                <GrowthChart
+                  projection={longTermProjection}
+                  startBalances={startBalances}
+                  startYear={startYear}
+                  currentAge={currentAge}
+                  serviceYears={serviceYears}
+                  svgRef={longTermChartRef}
+                />
+              </div>
+            )}
           </section>
         </div>
       )}

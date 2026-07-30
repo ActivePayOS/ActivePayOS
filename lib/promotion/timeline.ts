@@ -117,8 +117,9 @@ export function buildPromotionTimeline(
     };
   };
 
-  // Service start
-  const startPay = basePayFor(dataset, inputs.startGrade, 0);
+  // Service start (service month 0 — an E-1 start shows the reduced
+  // first-4-months rate).
+  const startPay = basePayFor(dataset, inputs.startGrade, 0, 0);
   events.push(
     make({
       id: "start",

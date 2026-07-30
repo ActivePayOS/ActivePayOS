@@ -1,8 +1,10 @@
 // lib/export/timeline-txt.ts
-// Human-readable plain-text timeline.
+// Human-readable plain-text timeline. Leads with a headline SUMMARY block
+// (path, contract end, final pay) so the conclusions come before the events.
 
 import { TimelineResult, TimelineInputs, EventKind } from "@/lib/promotion/timeline";
 import { formatUsd } from "./summary";
+import { timelineOverview } from "./overview";
 
 const KIND_TAG: Record<EventKind, string> = {
   start: "[START]",
@@ -23,6 +25,16 @@ export function generateTimelineTxt(
 
   out.push("ActivePayOS - Career Milestone Planner");
   out.push("======================================");
+  out.push("");
+
+  // Headline block first: where the path leads and when the big dates land.
+  out.push("SUMMARY");
+  const overview = timelineOverview(result, inputs);
+  const ovWidth = Math.max(...overview.map((o) => o.label.length)) + 2;
+  for (const o of overview) {
+    out.push(`${(o.label + ":").padEnd(ovWidth)} ${o.value}`);
+    out.push(`${" ".repeat(ovWidth + 1)}- ${o.explanation}`);
+  }
   out.push("");
 
   const ctx: Array<[string, string]> = [

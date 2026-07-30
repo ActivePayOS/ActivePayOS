@@ -1,8 +1,12 @@
 // lib/export/projection.ts
 // Wealth Projector exports (CSV / TXT). Pure string builders — generated
 // entirely in the browser, mirroring lib/export/budget-summary.ts.
+// Summary-first: totals, fees, and the Roth verdict lead; the year-by-year
+// table is detail that follows.
 
 import { formatPlain, formatUsd } from "./summary";
+import { projectionOverview } from "./overview";
+import { glossaryFor } from "./glossary";
 
 export type ProjectionYearLine = {
   year: number;
@@ -77,10 +81,18 @@ export type ProjectionExport = {
     k401Monthly?: number;
     k401UntilAge?: number;
     k401ReturnPct?: number;
+    /** Roth/Traditional election assumed for the civilian 401(k). */
+    k401Type?: "traditional" | "roth";
     inflationPct: number;
     payRaisePct: number;
     modelPromotions: boolean;
   };
+  /**
+   * Which optional accounts are switched ON in the tool (mirrors the
+   * on-screen table): builders should drop the Investments/Savings columns
+   * when the account is off. Absent = both on (legacy payloads).
+   */
+  activeAccounts?: { invest: boolean; savings: boolean };
   promotions: { year: number; grade: string; competitive: boolean }[];
   years: ProjectionYearLine[];
   totals: {
@@ -91,6 +103,18 @@ export type ProjectionExport = {
     contributed: number;
     growth: number;
     agencyMatch: number;
+    /** Member's own TSP contributions over the service window (pairs with agencyMatch). */
+    employeeTsp?: number;
+  };
+  /** High-3 pension ballpark, present when the scenario reaches 20+ total years. */
+  pension?: {
+    /** 2.5 (legacy High-3) or 2.0 (BRS) percent per year of service. */
+    multiplierPct: number;
+    serviceYearsTotal: number;
+    /** Final projected base pay, used as the High-3 proxy. */
+    high3MonthlyBase: number;
+    monthlyPension: number;
+    note: string;
   };
   fees?: FeeSection;
   rothTradeoff?: RothSection;
@@ -102,6 +126,25 @@ export function activeExtraAccounts(p: ProjectionExport): { ira: boolean; k401: 
   return {
     ira: p.years.some((y) => y.ira > 0.5),
     k401: p.years.some((y) => y.k401 > 0.5),
+  };
+}
+
+/**
+ * Full column gating, aligned with the on-screen table: IRA/401(k) appear when
+ * funded; Investments/Savings hide when the tool switched the account off
+ * (activeAccounts flag) AND it never holds money.
+ */
+export function activeColumns(p: ProjectionExport): {
+  ira: boolean;
+  k401: boolean;
+  invest: boolean;
+  savings: boolean;
+} {
+  const extras = activeExtraAccounts(p);
+  return {
+    ...extras,
+    invest: (p.activeAccounts?.invest ?? true) || p.years.some((y) => y.invest > 0.5),
+    savings: (p.activeAccounts?.savings ?? true) || p.years.some((y) => y.savings > 0.5),
   };
 }
 
@@ -128,6 +171,15 @@ export function generateProjectionCsv(p: ProjectionExport): string {
 
   lines.push(row(["ActivePayOS Wealth Projection"]));
   lines.push(row(["Generated", p.generatedOn]));
+
+  // High-level summary first — every headline number with what it means.
+  lines.push("");
+  lines.push(row(["SUMMARY", "", ""]));
+  lines.push(row(["Item", "Value", "What it means"]));
+  for (const item of projectionOverview(p)) {
+    lines.push(row([item.label, item.value, item.explanation]));
+  }
+
   lines.push("");
   lines.push(row(["Scenario", ""]));
   lines.push(row(["Branch", s.branchLabel]));
@@ -154,6 +206,8 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     if (s.k401UntilAge) lines.push(row(["401(k) contributions until age", s.k401UntilAge]));
     if (typeof s.k401ReturnPct === "number")
       lines.push(row(["Assumed 401(k) return (%/yr)", s.k401ReturnPct]));
+    if (s.k401Type)
+      lines.push(row(["401(k) type assumed", s.k401Type === "roth" ? "Roth" : "Traditional"]));
   }
   lines.push(row(["Inflation assumption (%/yr)", s.inflationPct]));
   lines.push(row(["Assumed annual military pay raise (%)", s.payRaisePct]));
@@ -169,53 +223,33 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     }
   }
 
-  const extras = activeExtraAccounts(p);
+  // ---- Totals, fees, and the Roth verdict — hoisted ABOVE the year table
+  // so the conclusions come before the detail. Each line carries a
+  // plain-English note where the glossary knows the term.
   lines.push("");
-  lines.push(
-    row([
-      "Year",
-      "Age",
-      "Serving",
-      "Grade",
-      "Base pay (monthly USD)",
-      "TSP (USD)",
-      ...(extras.ira ? ["IRA (USD)"] : []),
-      ...(extras.k401 ? ["401(k) (USD)"] : []),
-      "Investments (USD)",
-      "Savings (USD)",
-      "Total (USD)",
-      "Total (today's USD)",
-    ])
-  );
-  for (const yLine of p.years) {
+  lines.push(row(["Totals", "", "What it is"]));
+  const totalRow = (label: string, value: string) =>
+    lines.push(row([label, value, glossaryFor(label) ?? ""]));
+  if (p.totals.atSeparation !== null && p.totals.separationYear !== null) {
+    totalRow(`At separation (${p.totals.separationYear})`, formatPlain(p.totals.atSeparation));
+  }
+  totalRow(`Projected total (${s.endYear})`, formatPlain(p.totals.final));
+  totalRow("In today's dollars", formatPlain(p.totals.finalReal));
+  totalRow("Total contributed (incl. starting balances)", formatPlain(p.totals.contributed));
+  totalRow("Market growth", formatPlain(p.totals.growth));
+  totalRow("BRS agency match received", formatPlain(p.totals.agencyMatch));
+  if (typeof p.totals.employeeTsp === "number" && p.totals.employeeTsp > 0) {
+    totalRow("Your TSP contributions while serving", formatPlain(p.totals.employeeTsp));
+  }
+  if (p.pension) {
     lines.push(
       row([
-        yLine.year,
-        yLine.age,
-        yLine.serving ? "Yes" : "No",
-        yLine.serving ? yLine.grade : "",
-        yLine.serving ? formatPlain(yLine.basePayMonthly) : "",
-        formatPlain(yLine.tsp),
-        ...(extras.ira ? [formatPlain(yLine.ira)] : []),
-        ...(extras.k401 ? [formatPlain(yLine.k401)] : []),
-        formatPlain(yLine.invest),
-        formatPlain(yLine.savings),
-        formatPlain(yLine.total),
-        formatPlain(yLine.realTotal),
+        `Estimated military pension at ${p.pension.serviceYearsTotal} years (USD/mo)`,
+        formatPlain(p.pension.monthlyPension),
+        p.pension.note,
       ])
     );
   }
-
-  lines.push("");
-  lines.push(row(["Totals", ""]));
-  if (p.totals.atSeparation !== null && p.totals.separationYear !== null) {
-    lines.push(row([`At separation (${p.totals.separationYear})`, formatPlain(p.totals.atSeparation)]));
-  }
-  lines.push(row([`Projected total (${s.endYear})`, formatPlain(p.totals.final)]));
-  lines.push(row(["In today's dollars", formatPlain(p.totals.finalReal)]));
-  lines.push(row(["Total contributed (incl. starting balances)", formatPlain(p.totals.contributed)]));
-  lines.push(row(["Market growth", formatPlain(p.totals.growth)]));
-  lines.push(row(["BRS agency match received", formatPlain(p.totals.agencyMatch)]));
 
   if (p.fees) {
     lines.push("");
@@ -252,6 +286,45 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     );
   }
 
+  // ---- Year-by-year detail (after the conclusions) ----
+  const cols = activeColumns(p);
+  lines.push("");
+  lines.push(row(["Year by year", ""]));
+  lines.push(
+    row([
+      "Year",
+      "Age",
+      "Serving",
+      "Grade",
+      "Base pay (monthly USD)",
+      "TSP (USD)",
+      ...(cols.ira ? ["IRA (USD)"] : []),
+      ...(cols.k401 ? ["401(k) (USD)"] : []),
+      ...(cols.invest ? ["Investments (USD)"] : []),
+      ...(cols.savings ? ["Savings (USD)"] : []),
+      "Total (USD)",
+      "Total (today's USD)",
+    ])
+  );
+  for (const yLine of p.years) {
+    lines.push(
+      row([
+        yLine.year,
+        yLine.age,
+        yLine.serving ? "Yes" : "No",
+        yLine.serving ? yLine.grade : "",
+        yLine.serving ? formatPlain(yLine.basePayMonthly) : "",
+        formatPlain(yLine.tsp),
+        ...(cols.ira ? [formatPlain(yLine.ira)] : []),
+        ...(cols.k401 ? [formatPlain(yLine.k401)] : []),
+        ...(cols.invest ? [formatPlain(yLine.invest)] : []),
+        ...(cols.savings ? [formatPlain(yLine.savings)] : []),
+        formatPlain(yLine.total),
+        formatPlain(yLine.realTotal),
+      ])
+    );
+  }
+
   if (p.longTerm) {
     lines.push("");
     lines.push(row(["Long-term analysis", ""]));
@@ -274,7 +347,8 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     ])
   );
 
-  return lines.join("\r\n") + "\r\n";
+  // \n across every CSV/TXT builder (one convention product-wide).
+  return lines.join("\n") + "\n";
 }
 
 // -------------------------------------------------------------------- TXT ---
@@ -288,6 +362,15 @@ export function generateProjectionTxt(p: ProjectionExport): string {
 
   lines.push("ACTIVEPAYOS WEALTH PROJECTION");
   lines.push(`Generated ${p.generatedOn}`);
+  lines.push(div);
+
+  // Headline block first: every big number with what it means. The year-by-
+  // year table and full trade-space sections follow as detail.
+  lines.push("SUMMARY");
+  for (const o of projectionOverview(p)) {
+    lines.push(kv(o.label, o.value));
+    lines.push(`  - ${o.explanation}`);
+  }
   lines.push(div);
   lines.push(kv("Scenario", `${s.branchLabel} ${s.grade}, ${s.yos} YOS, age ${s.currentAge}`));
   lines.push(kv("Staying in", `${s.serviceYears} more year(s)`));
@@ -308,7 +391,9 @@ export function generateProjectionTxt(p: ProjectionExport): string {
     lines.push(
       kv(
         "Civilian 401(k) after service",
-        `${formatUsd(s.k401Monthly)}/mo (incl. match) until age ${s.k401UntilAge ?? "-"} at ${s.k401ReturnPct ?? "-"}%/yr`
+        `${formatUsd(s.k401Monthly)}/mo (incl. match) until age ${s.k401UntilAge ?? "-"} at ${s.k401ReturnPct ?? "-"}%/yr${
+          s.k401Type ? ` (${s.k401Type === "roth" ? "Roth" : "Traditional"})` : ""
+        }`
       )
     );
   }
@@ -322,50 +407,6 @@ export function generateProjectionTxt(p: ProjectionExport): string {
       )
     );
   }
-  const extras = activeExtraAccounts(p);
-  lines.push(div);
-  lines.push(
-    [
-      "Year",
-      "Age",
-      "Grade",
-      "TSP",
-      ...(extras.ira ? ["IRA"] : []),
-      ...(extras.k401 ? ["401k"] : []),
-      "Invest",
-      "Savings",
-      "Total",
-      "Today's $",
-    ]
-      .map((h, i) => (i < 3 ? h.padEnd(i === 0 ? 6 : 5) : h.padStart(10)))
-      .join("")
-  );
-  for (const yLine of p.years) {
-    lines.push(
-      [
-        String(yLine.year).padEnd(6),
-        String(yLine.age).padEnd(5),
-        (yLine.serving ? yLine.grade : "-").padEnd(5),
-        formatUsd(yLine.tsp).padStart(10),
-        ...(extras.ira ? [formatUsd(yLine.ira).padStart(10)] : []),
-        ...(extras.k401 ? [formatUsd(yLine.k401).padStart(10)] : []),
-        formatUsd(yLine.invest).padStart(10),
-        formatUsd(yLine.savings).padStart(10),
-        formatUsd(yLine.total).padStart(10),
-        formatUsd(yLine.realTotal).padStart(10),
-      ].join("")
-    );
-  }
-  lines.push(div);
-  if (p.totals.atSeparation !== null && p.totals.separationYear !== null) {
-    lines.push(kv(`At separation (${p.totals.separationYear})`, formatUsd(p.totals.atSeparation)));
-  }
-  lines.push(kv(`Projected total (${s.endYear})`, formatUsd(p.totals.final)));
-  lines.push(kv("In today's dollars", formatUsd(p.totals.finalReal)));
-  lines.push(kv("Total contributed", formatUsd(p.totals.contributed)));
-  lines.push(kv("Market growth", formatUsd(p.totals.growth)));
-  lines.push(kv("BRS agency match received", formatUsd(p.totals.agencyMatch)));
-
   if (p.fees) {
     lines.push(div);
     lines.push("FUND MANAGEMENT FEES");
@@ -403,6 +444,43 @@ export function generateProjectionTxt(p: ProjectionExport): string {
     );
   }
 
+  // ---- Year-by-year detail (after the conclusions) ----
+  const cols = activeColumns(p);
+  lines.push(div);
+  lines.push("YEAR BY YEAR");
+  lines.push(
+    [
+      "Year",
+      "Age",
+      "Grade",
+      "TSP",
+      ...(cols.ira ? ["IRA"] : []),
+      ...(cols.k401 ? ["401k"] : []),
+      ...(cols.invest ? ["Invest"] : []),
+      ...(cols.savings ? ["Savings"] : []),
+      "Total",
+      "Today's $",
+    ]
+      .map((h, i) => (i < 3 ? h.padEnd(i === 0 ? 6 : 5) : h.padStart(10)))
+      .join("")
+  );
+  for (const yLine of p.years) {
+    lines.push(
+      [
+        String(yLine.year).padEnd(6),
+        String(yLine.age).padEnd(5),
+        (yLine.serving ? yLine.grade : "-").padEnd(5),
+        formatUsd(yLine.tsp).padStart(10),
+        ...(cols.ira ? [formatUsd(yLine.ira).padStart(10)] : []),
+        ...(cols.k401 ? [formatUsd(yLine.k401).padStart(10)] : []),
+        ...(cols.invest ? [formatUsd(yLine.invest).padStart(10)] : []),
+        ...(cols.savings ? [formatUsd(yLine.savings).padStart(10)] : []),
+        formatUsd(yLine.total).padStart(10),
+        formatUsd(yLine.realTotal).padStart(10),
+      ].join("")
+    );
+  }
+
   if (p.longTerm) {
     lines.push(div);
     lines.push("LONG-TERM ANALYSIS");
@@ -424,5 +502,6 @@ export function generateProjectionTxt(p: ProjectionExport): string {
   lines.push("year to year. Verify data at tsp.gov and DFAS.");
   lines.push("Generated by ActivePayOS - activepayos.com");
 
-  return lines.join("\r\n") + "\r\n";
+  // \n across every CSV/TXT builder (one convention product-wide).
+  return lines.join("\n") + "\n";
 }

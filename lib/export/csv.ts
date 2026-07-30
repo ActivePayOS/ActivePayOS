@@ -1,8 +1,11 @@
 // lib/export/csv.ts
-// Minimalist CSV: a small context block plus a flat Monthly/Annual pay table.
+// Minimalist CSV: a SUMMARY block up top (headline numbers with plain-English
+// notes), then the context block and the flat Monthly/Annual pay table.
 // Universal and import-friendly (Excel, Google Sheets, YNAB, Monarch, etc.).
 
 import { PaySummary, formatPlain } from "./summary";
+import { payOverview } from "./overview";
+import { glossaryFor } from "./glossary";
 
 function csvCell(value: string | number): string {
   let s = String(value);
@@ -27,6 +30,14 @@ function row(cells: Array<string | number>): string {
 export function generatePayCsv(summary: PaySummary): string {
   const lines: string[] = [];
 
+  // High-level summary first — the big numbers with what they mean.
+  lines.push(row(["SUMMARY", "", ""]));
+  lines.push(row(["Item", "Value", "What it means"]));
+  for (const item of payOverview(summary)) {
+    lines.push(row([item.label, item.value, item.explanation]));
+  }
+  lines.push("");
+
   // Context block (Field,Value)
   lines.push(row(["Field", "Value"]));
   lines.push(row(["Year", summary.year]));
@@ -37,13 +48,21 @@ export function generatePayCsv(summary: PaySummary): string {
   lines.push(row(["State of Legal Residence", summary.stateOfLegalResidence]));
   lines.push(row(["Generated", summary.generatedOn]));
 
-  // Blank separator row, then the pay table.
+  // Blank separator row, then the pay table (with a plain-English note per
+  // component, sourced from the site's i-dot popovers).
   lines.push("");
-  lines.push(row(["Pay Component", "Monthly (USD)", "Annual (USD)"]));
+  lines.push(row(["Pay Component", "Monthly (USD)", "Annual (USD)", "What it is"]));
   for (const l of summary.lines) {
-    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.annual)]));
+    lines.push(row([l.label, formatPlain(l.monthly), formatPlain(l.annual), glossaryFor(l.label) ?? ""]));
   }
-  lines.push(row([summary.total.label, formatPlain(summary.total.monthly), formatPlain(summary.total.annual)]));
+  lines.push(
+    row([
+      summary.total.label,
+      formatPlain(summary.total.monthly),
+      formatPlain(summary.total.annual),
+      glossaryFor(summary.total.label) ?? "",
+    ])
+  );
 
   // Trailing newline for well-behaved parsers.
   return lines.join("\n") + "\n";

@@ -1,8 +1,10 @@
 // lib/export/timeline-csv.ts
-// Flat CSV of the promotion + milestone timeline.
+// Flat CSV of the promotion + milestone timeline. Leads with a SUMMARY block
+// (path, contract end, final pay) so the conclusions come before the events.
 
 import { TimelineResult, TimelineInputs, EventKind } from "@/lib/promotion/timeline";
 import { formatPlain } from "./summary";
+import { timelineOverview } from "./overview";
 
 const KIND_LABEL: Record<EventKind, string> = {
   start: "Start",
@@ -33,6 +35,15 @@ export function generateTimelineCsv(
   generatedOn: string
 ): string {
   const lines: string[] = [];
+
+  // High-level summary first — where the path leads, when the contract ends,
+  // and what the final pay looks like.
+  lines.push(row(["SUMMARY", "", ""]));
+  lines.push(row(["Item", "Value", "What it means"]));
+  for (const item of timelineOverview(result, inputs)) {
+    lines.push(row([item.label, item.value, item.explanation]));
+  }
+  lines.push("");
 
   lines.push(row(["Field", "Value"]));
   lines.push(row(["Branch", result.branchLabel]));

@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ADDL_MEDICARE_RATE,
+  FEDERAL_BRACKETS_2026,
   MEDICARE_RATE,
   SS_RATE,
   SS_WAGE_BASE_2026,
@@ -18,6 +19,7 @@ import {
   federalTaxAnnual,
   type TakeHomeInput,
 } from "@/lib/pay/takehome";
+import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 as TSP_LIMIT_FROM_TSP_MODULE } from "@/lib/pay/tsp";
 
 describe("federalTaxAnnual", () => {
   it("returns 0 for non-positive taxable income", () => {
@@ -176,5 +178,19 @@ describe("computeTakeHome", () => {
   it("standard deduction constants match the documented 2026 figures", () => {
     expect(STANDARD_DEDUCTION_2026.single).toBe(16100);
     expect(STANDARD_DEDUCTION_2026.married).toBe(32200);
+  });
+
+  // Literal pins (not derived from the exported constants) so a bad annual
+  // update fails here even in tests that reuse the constants for expectations.
+  it("2026 SSA/IRS constants match the documented figures", () => {
+    expect(SS_WAGE_BASE_2026).toBe(184500);
+    expect(TSP_ELECTIVE_DEFERRAL_LIMIT_2026).toBe(24500);
+    // Both import paths must serve the same single definition.
+    expect(TSP_LIMIT_FROM_TSP_MODULE).toBe(TSP_ELECTIVE_DEFERRAL_LIMIT_2026);
+  });
+
+  it("2026 single federal bracket boundaries match IRS Rev. Proc. 2025-32", () => {
+    const singleBounds = FEDERAL_BRACKETS_2026.single.map((b) => b.upTo);
+    expect(singleBounds.slice(0, 4)).toEqual([12400, 50400, 105700, 201775]);
   });
 });

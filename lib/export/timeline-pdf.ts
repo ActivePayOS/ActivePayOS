@@ -108,6 +108,29 @@ export async function generateTimelinePdf(
   let y = drawHeader(page, f, result, inputs, generatedOn, true);
   let prevNodeY: number | null = null;
 
+  // ---- headline stat band (summary first): path, ETS, final pay ----
+  const lastPaid = result.events
+    .filter((e) => e.monthlyBasePay != null)
+    .sort((a, b) => a.monthsFromStart - b.monthsFromStart)
+    .pop();
+  const stats: Array<[string, string]> = [
+    ["PROJECTED PATH", `${result.startGrade} -> ${result.finalGrade}`],
+    ["CONTRACT END (ETS)", result.etsDateISO],
+    ...(lastPaid && lastPaid.monthlyBasePay != null
+      ? ([["FINAL BASE PAY (20-YR)", `${formatUsd(lastPaid.monthlyBasePay)}/mo`]] as Array<[string, string]>)
+      : []),
+    ["20-YR RETIREMENT", result.retirementDateISO],
+  ];
+  const statW = (RIGHT - M) / stats.length;
+  stats.forEach(([label, value], i) => {
+    const x = M + i * statW;
+    page.drawText(label, { x, y, size: 7, font: f.bold, color: MUTED, maxWidth: statW - 8 });
+    page.drawText(value, { x, y: y - 15, size: 12, font: f.bold, color: NAVY });
+  });
+  y -= 34;
+  page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.5, color: LINE });
+  y -= 24;
+
   for (const e of result.events) {
     const detailLines = e.detail ? wrap(e.detail, f.reg, 8, TEXT_W) : [];
     const hasPay = e.monthlyBasePay != null;

@@ -12,14 +12,20 @@ import type { ThemeColors } from "./useThemeColors";
 
 const W = 920;
 const H = 480;
-const ML = 150; // left margin (room for income labels)
-const MR = 150; // right margin (room for expense labels)
+const ML = 168; // left margin (room for income labels + leader gutter)
+const MR = 205; // right margin (room for expense labels + leader gutter)
 const MT = 46; // top margin (captions + pool label)
 const MB = 34; // bottom margin (watermark)
 const NODE_W = 18;
 const PAD = 14; // vertical gap between stacked nodes
 const LABEL_TOP = 58;
 const LABEL_BOTTOM = H - MB - 12;
+const LEADER_GUTTER = 30; // clear space between a node and its label chip
+const CHIP = 8; // label colour chip, in px
+// Small entries (a $26 SGLI premium against a $9k budget) round to a sub-pixel
+// band and vanish. Floor every band so each item stays visible as a hairline
+// and its leader line has something to point at.
+const MIN_BAND = 2.5;
 
 const COL_X: Record<0 | 1 | 2, number> = {
   0: ML,
@@ -81,25 +87,40 @@ function layout(graph: SankeyGraph) {
   const scale = (availH - (maxCount - 1) * PAD) / T;
   if (!(scale > 0)) return null;
 
+  const bandFor = (nodes: SankeyGraph["nodes"]) =>
+    nodes.map((n) => Math.max(n.value * scale, MIN_BAND));
+
+  const inHeights = bandFor(byCol[0]);
+  const outHeights = bandFor(byCol[2]);
+  const inTotal = inHeights.reduce((sum, h) => sum + h, 0);
+  const outTotal = outHeights.reduce((sum, h) => sum + h, 0);
+  // The pool spans whichever side stacks taller, so neither set of ribbons
+  // overruns it once the small-entry floor has been applied.
+  const poolHeights = byCol[1].map(() => Math.max(inTotal, outTotal, MIN_BAND));
+
   const positioned: Positioned[] = [];
-  for (const c of [0, 1, 2] as const) {
-    const colNodes = byCol[c];
-    const colH = T * scale + (colNodes.length - 1) * PAD;
+  const place = (nodes: SankeyGraph["nodes"], heights: number[], c: 0 | 1 | 2) => {
+    const colH = heights.reduce((sum, h) => sum + h, 0) + (nodes.length - 1) * PAD;
     let y = innerTop + (availH - colH) / 2;
-    for (const n of colNodes) {
-      const h = n.value * scale;
+    nodes.forEach((n, i) => {
+      const h = heights[i];
       positioned.push({ ...n, x: COL_X[c], y, h, cy: y + h / 2 });
       y += h + PAD;
-    }
-  }
+    });
+  };
+  place(byCol[0], inHeights, 0);
+  place(byCol[1], poolHeights, 1);
+  place(byCol[2], outHeights, 2);
 
   const map = new Map(positioned.map((p) => [p.id, p]));
   const pool = map.get(POOL_ID);
   if (!pool) return null;
 
   const ribbons: Ribbon[] = [];
-  let inOff = pool.y; // incoming links stack on the pool's left edge
-  let outOff = pool.y; // outgoing links stack on the pool's right edge
+  // Each side's ribbons are centred on the pool edge, so a shorter stack sits
+  // level with the bar rather than hanging off one end.
+  let inOff = pool.y + (pool.h - inTotal) / 2;
+  let outOff = pool.y + (pool.h - outTotal) / 2;
 
   // Inflows: each income/shortfall node → pool (full-height ribbon).
   for (const n of positioned.filter((p) => p.column === 0)) {
@@ -127,8 +148,12 @@ function layout(graph: SankeyGraph) {
   return { positioned, ribbons };
 }
 
-function fitLabel(label: string, maxChars: number) {
-  return label.length > maxChars ? `${label.slice(0, Math.max(0, maxChars - 1))}…` : label;
+function fitLabel(label: string, maxWidth: number, fontSize: number) {
+  // Arial semibold averages ~0.56em per character; close enough to keep labels
+  // inside the margin without measuring text in the DOM (this SVG also renders
+  // headlessly for PNG/SVG export).
+  const maxChars = Math.max(3, Math.floor(maxWidth / (fontSize * 0.56)));
+  return label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label;
 }
 
 function sideLabelLayout(nodes: Positioned[]) {
@@ -279,37 +304,48 @@ export default function SankeySvg({
             );
           }
           const left = n.column === 0;
-          const tx = left ? n.x - 8 : n.x + NODE_W + 8;
+          const nodeEdge = left ? n.x : n.x + NODE_W;
+          const chipX = left ? nodeEdge - LEADER_GUTTER - CHIP : nodeEdge + LEADER_GUTTER;
           const anchor = left ? "end" : "start";
           const labelPosition = (left ? leftLabelPositions : rightLabelPositions).get(n.id);
           const labelY = labelPosition?.y ?? n.cy;
           const labelSize = labelPosition?.labelSize ?? 12.5;
           const valueSize = labelPosition?.valueSize ?? 11;
           const twoLine = labelPosition?.twoLine ?? true;
-          const label = fitLabel(n.label, left ? 24 : 20);
-          const shifted = Math.abs(labelY - n.cy) > 8;
-          // Anti-overlap spreading can move a label well away from its band, so
-          // every label carries a color chip and any leader line is drawn in
-          // the node's own color — the label ↔ band mapping stays readable even
-          // when a small node (SGLI) sits beside a big one (TSP).
           const chipCy = twoLine ? labelY - 7 : labelY;
-          const textX = left ? tx - 12 : tx + 12;
+          const textX = left ? chipX - 6 : chipX + CHIP + 6;
+          const textRoom = left ? textX : W - textX - 6;
+          const label = fitLabel(n.label, textRoom, labelSize);
+          // Every item gets its own leader: a curve from the band to the label
+          // chip, in the node's colour. Anti-overlap spreading can push a label
+          // well away from its band, and a small entry (SGLI) can sit beside a
+          // huge one (TSP), so the connector is what makes label ↔ band legible.
+          // It runs inside the label gutter, never across the ribbons.
+          const leaderEnd = left ? chipX + CHIP : chipX;
+          const bend = LEADER_GUTTER * 0.45;
+          const leaderPath = [
+            `M${nodeEdge},${n.cy}`,
+            `C${left ? nodeEdge - bend : nodeEdge + bend},${n.cy}`,
+            `${left ? leaderEnd + bend : leaderEnd - bend},${chipCy}`,
+            `${leaderEnd},${chipCy}`,
+          ].join(" ");
+          const leaderActive = hovered === null || hovered === n.id;
           return (
             <g key={`lbl-${n.id}`}>
-              {shifted && (
-                <path
-                  d={`M${left ? n.x : n.x + NODE_W},${n.cy} L${left ? tx + 4 : tx - 4},${chipCy}`}
-                  stroke={n.color}
-                  strokeOpacity={0.55}
-                  strokeWidth={1.5}
-                  fill="none"
-                />
-              )}
+              <path
+                d={leaderPath}
+                stroke={n.color}
+                strokeOpacity={leaderActive ? 0.85 : 0.2}
+                strokeWidth={1.25}
+                strokeLinecap="round"
+                fill="none"
+                style={{ transition: "stroke-opacity 120ms" }}
+              />
               <rect
-                x={left ? tx - 8 : tx}
-                y={chipCy - 4}
-                width={8}
-                height={8}
+                x={chipX}
+                y={chipCy - CHIP / 2}
+                width={CHIP}
+                height={CHIP}
                 rx={2}
                 fill={n.color}
               />

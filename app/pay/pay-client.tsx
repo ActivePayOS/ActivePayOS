@@ -19,6 +19,12 @@ import {
   type TspType,
 } from "@/lib/pay/takehome";
 import {
+  TSP_AGENCY_MONEY_NOTE,
+  TSP_LIMIT_SENTENCE,
+  TSP_LIMIT_SUMMARY,
+  TSP_MAX_EARLY_WARNING,
+} from "@/lib/pay/tsp";
+import {
   computeCivilianEquivalent,
   CIVILIAN_EQUIVALENT_ASSUMPTIONS,
   CIVILIAN_EQUIVALENT_SOURCES,
@@ -32,6 +38,7 @@ import {
   type Track,
 } from "@/data/promotion/timing";
 import InfoDot from "@/components/InfoDot";
+import TspResetCalculator from "@/components/TspResetCalculator";
 import ReportPanel from "@/components/ReportPanel";
 import { buildPaySummary, type PaySummary } from "@/lib/export/summary";
 import { generatePayCsv } from "@/lib/export/csv";
@@ -1359,7 +1366,7 @@ export default function PayClient({
                   TSP contribution{" "}
                   <InfoDot
                     text={
-                      "The Thrift Savings Plan is the military's 401(k) — retirement investing taken straight from your pay.\n\nYou contribute a percent of base pay.\n\nUnder BRS, contributing at least 5% collects the full government match — an extra 5% of free pay."
+                      `${TSP_LIMIT_SENTENCE}\n\nThe Thrift Savings Plan is the military's 401(k) — retirement investing taken straight from your pay. You contribute a percent of base pay only, not BAH or BAS.\n\n${TSP_AGENCY_MONEY_NOTE} Contributing at least 5% collects the full match — an extra 5% of free pay.`
                     }
                   />
                 </label>
@@ -1384,7 +1391,9 @@ export default function PayClient({
                     onClick={maxTsp}
                     disabled={basePay <= 0}
                     className="shrink-0 rounded-xl border px-3 py-2 text-sm font-medium hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={`Set the % that reaches the ${fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026)} annual limit.`}
+                    title={`Set the % that reaches the ${fmtUSD0(
+                      TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                    )} 2026 annual limit. ${TSP_MAX_EARLY_WARNING}`}
                   >
                     Max
                   </button>
@@ -1416,6 +1425,13 @@ export default function PayClient({
                     </p>
                   )}
                 </div>
+
+                <TspResetCalculator
+                  className="mt-3"
+                  monthlyBasePay={basePay}
+                  currentPct={tspPct}
+                  onApply={(pct) => setTspPct(pct)}
+                />
               </div>
 
               <div>
@@ -1423,7 +1439,7 @@ export default function PayClient({
                   TSP type{" "}
                   <InfoDot
                     text={
-                      "Traditional: pre-tax now, taxed when you withdraw in retirement.\nRoth: taxed now, withdrawals are tax-free later.\n\nEarly-career members in low brackets often favor Roth — you lock in today's low rate.\n\nThe BRS match is always Traditional either way."
+                      `The ${TSP_LIMIT_SUMMARY} 2026 limit covers both together — this picks how the money is taxed, not how much you can put in.\n\nTraditional: pre-tax now, taxed when you withdraw in retirement.\nRoth: taxed now, withdrawals are tax-free later.\n\nEarly-career members in low brackets often favor Roth — you lock in today's low rate.\n\nThe BRS match is always Traditional either way.`
                     }
                   />
                 </label>

@@ -157,6 +157,24 @@ export const BRANCH_OPTIONS: { value: BranchId; label: string }[] = (
   Object.values(BRANCHES) as BranchTiming[]
 ).map((b) => ({ value: b.id, label: b.label }));
 
+// What the "time in service" figure means for each track. Officer phase points
+// are counted from commissioning, so a prior-enlisted officer's total service
+// is NOT the number these schedules expect — the single most common way the
+// projection drifts from a real career.
+export const TIMING_BASIS: Record<Track, string> = {
+  officer:
+    "Officer timing follows DOPMA phase points, counted in years of commissioned service — " +
+    "not total time in uniform. If you came up through the enlisted ranks, enter your years " +
+    "since commissioning so the promotion dates line up.",
+  enlisted:
+    "Enlisted timing is counted in total years of service. Junior grades are largely " +
+    "time-based; senior grades depend on boards, exams, and promotion points.",
+};
+
+export const TIMING_DISCLAIMER =
+  "These are typical planning estimates, not entitlements. Actual timing depends on your " +
+  "record, your specialty's promotion rates, and year-to-year board results.";
+
 function officerSteps(branch: BranchId): PromotionStep[] {
   return BRANCHES[branch].officer ?? DOPMA_OFFICER;
 }

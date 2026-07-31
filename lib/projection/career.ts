@@ -46,9 +46,28 @@ export type PromotionEvent = {
   monthIndex: number;
   toGrade: string;
   competitive: boolean;
+  /** The schedule's typical time-in-service point for this step, in months. */
+  tisMonths: number;
+  /**
+   * True when the typical point is already behind the member: they hold a lower
+   * grade than the schedule expects at their time in service, so the step is
+   * shown as due now rather than dropped.
+   */
+  behindSchedule: boolean;
+  /** Context note from the branch schedule ("Typically automatic at 18 months…"). */
+  note?: string;
 };
 
-/** Typical promotions expected between now and separation. */
+/**
+ * Typical promotions between now and separation.
+ *
+ * Every grade above the member's current one is listed. A step whose typical
+ * point has already passed (an O-1 at 2 YOS is past O-2's 18-month point) is
+ * pinned at "now" and flagged rather than filtered out — dropping it made the
+ * next grade appear to be a skip (O-1 straight to O-3) while gradeAtTis was
+ * quietly paying the intermediate grade anyway. Pin dates never move backwards,
+ * so the order always reads sensibly.
+ */
 export function upcomingPromotions(
   branch: BranchId,
   track: Track,
@@ -58,18 +77,83 @@ export function upcomingPromotions(
 ): PromotionEvent[] {
   const nowTis = currentYosYears * 12;
   const endTis = (currentYosYears + serviceYearsRemaining) * 12;
-  return stepsForTrack(branch, track)
-    .filter(
-      (s) =>
-        s.tisMonths > nowTis &&
-        s.tisMonths <= endTis &&
-        gradeNumber(s.toGrade) > gradeNumber(currentGrade)
+  // No service window left: someone separating today gets no more promotions,
+  // not even one that is already overdue.
+  if (endTis <= nowTis) return [];
+
+  const events: PromotionEvent[] = [];
+  let cursor = nowTis;
+
+  for (const step of stepsForTrack(branch, track)) {
+    if (gradeNumber(step.toGrade) <= gradeNumber(currentGrade)) continue;
+    const pinTis = Math.max(step.tisMonths, cursor);
+    if (pinTis > endTis) break;
+    events.push({
+      monthIndex: Math.round(pinTis - nowTis),
+      toGrade: step.toGrade,
+      competitive: !!step.competitive,
+      tisMonths: step.tisMonths,
+      behindSchedule: step.tisMonths <= nowTis,
+      note: step.note,
+    });
+    cursor = pinTis;
+  }
+
+  return events;
+}
+
+/** How a ladder step relates to where the member is today. */
+export type LadderStatus = "held" | "due" | "upcoming" | "beyond";
+
+export type LadderStep = {
+  toGrade: string;
+  tisMonths: number;
+  competitive: boolean;
+  note?: string;
+  status: LadderStatus;
+  /** Months from now, for the steps that are still ahead. */
+  monthIndex: number | null;
+};
+
+/**
+ * The full assumed promotion ladder for a track, annotated for display.
+ *
+ * The projection is only as good as this schedule, so the UI shows the whole
+ * thing — including the steps treated as already earned — instead of only the
+ * ones still ahead.
+ */
+export function promotionLadder(
+  branch: BranchId,
+  track: Track,
+  currentGrade: string,
+  currentYosYears: number,
+  serviceYearsRemaining: number
+): LadderStep[] {
+  const ahead = new Map(
+    upcomingPromotions(branch, track, currentGrade, currentYosYears, serviceYearsRemaining).map(
+      (e) => [e.toGrade, e]
     )
-    .map((s) => ({
-      monthIndex: Math.round(s.tisMonths - nowTis),
-      toGrade: s.toGrade,
-      competitive: !!s.competitive,
-    }));
+  );
+
+  return stepsForTrack(branch, track).map((step) => {
+    const event = ahead.get(step.toGrade);
+    const held = gradeNumber(step.toGrade) <= gradeNumber(currentGrade);
+    const status: LadderStatus = held
+      ? "held"
+      : event
+        ? event.behindSchedule
+          ? "due"
+          : "upcoming"
+        : "beyond";
+    return {
+      toGrade: step.toGrade,
+      tisMonths: step.tisMonths,
+      competitive: !!step.competitive,
+      note: step.note,
+      status,
+      monthIndex: event ? event.monthIndex : null,
+    };
+  });
 }
 
 export type CareerProjectionInput = {

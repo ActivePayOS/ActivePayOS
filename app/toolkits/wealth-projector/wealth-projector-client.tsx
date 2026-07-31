@@ -5,9 +5,16 @@ import Link from "next/link";
 import { fmtUSD0 } from "@/lib/sankey/model";
 import {
   DEFAULT_FUND_ALLOCATION,
+  DEFERRAL_SHARED_NOTE,
+  TSP_AGENCY_MONEY_NOTE,
   TSP_ELECTIVE_DEFERRAL_LIMIT_2026,
   TSP_EXPENSE_EXPLAINER,
   TSP_FUNDS,
+  K401_LIMIT_HINT,
+  TSP_LIMIT_HINT,
+  TSP_LIMIT_SENTENCE,
+  TSP_LIMIT_SUMMARY,
+  TSP_MAX_EARLY_WARNING,
   TSP_TYPICAL_EXPENSE_RATIO_PCT,
   type FundAllocation,
   type TspFundKey,
@@ -16,7 +23,11 @@ import {
   DEFAULT_IRA_EXPENSE_RATIO_PCT,
   IRA_CONTRIBUTION_LIMIT_2026,
   IRA_FEE_DISCLAIMER,
+  IRA_LIMIT_HINT,
+  IRA_LIMIT_SENTENCE,
   IRA_PROVIDER_CONTEXT,
+  IRA_SEPARATE_FROM_TSP_NOTE,
+  ROTH_IRA_PHASEOUT_NOTE,
 } from "@/lib/pay/ira";
 import {
   computeRothTradeoff,
@@ -27,8 +38,10 @@ import ReportPanel from "@/components/ReportPanel";
 import { blendedAnnualReturn, brsAgencyPct, yearsToDouble } from "@/lib/projection/wealth";
 import {
   projectCareerWealth,
+  promotionLadder,
   upcomingPromotions,
   type CareerProjectionInput,
+  type LadderStatus,
 } from "@/lib/projection/career";
 import {
   applyAssignments,
@@ -36,7 +49,14 @@ import {
   type ContributionDestination,
 } from "@/lib/projection/budget-link";
 import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
-import { BRANCH_OPTIONS, type BranchId, type Track } from "@/data/promotion/timing";
+import {
+  BRANCH_OPTIONS,
+  BRANCHES,
+  TIMING_BASIS,
+  TIMING_DISCLAIMER,
+  type BranchId,
+  type Track,
+} from "@/data/promotion/timing";
 import {
   ACCOUNT_COLORS,
   ACCOUNT_LABELS,
@@ -50,6 +70,7 @@ import PlanFlow from "@/components/PlanFlow";
 import Explain from "@/components/Explain";
 import InfoDot from "@/components/InfoDot";
 import HoverHint from "@/components/HoverHint";
+import TspResetCalculator from "@/components/TspResetCalculator";
 import { loadPaySnapshot, saveProjectionSnapshot } from "@/lib/profile/handoff";
 import { getBahLookup } from "@/lib/pay/bah";
 import {
@@ -104,6 +125,25 @@ const FUND_KEYS = TSP_FUNDS.map((f) => f.key);
 
 const ENLISTED_GRADES = ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9"];
 const OFFICER_GRADES = ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6"];
+
+// How a promotion ladder step's typical time-in-service point reads in the
+// "How promotions are modelled" disclosure: months while that's the natural
+// unit (the 18-month O-2 point), years once it isn't.
+function tisPointLabel(months: number): string {
+  if (months < 24) return `${months} months of service`;
+  const years = months / 12;
+  const shown = Number.isInteger(years) ? String(years) : years.toFixed(1);
+  return `${shown} year${shown === "1" ? "" : "s"}`;
+}
+
+// Muted for the steps that aren't in play (already held, or past the service
+// window), amber for one whose typical point has already gone by.
+const LADDER_STATUS_TEXT: Record<LadderStatus, string> = {
+  held: "text-gray-400",
+  due: "text-amber-700",
+  upcoming: "text-gray-600",
+  beyond: "text-gray-400",
+};
 
 // One-time read of the saved Budget Builder state (used for prefill and the
 // "Use your budget" contribution assignments). Shape is best-effort — every
@@ -531,6 +571,13 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
         ? upcomingPromotions(branch, track, grade, Math.max(0, yosNow), serviceYears)
         : [],
     [modelPromotions, branch, track, grade, yosNow, serviceYears]
+  );
+  // The whole assumed ladder — including the steps already held and the ones
+  // past the service window — so "why is there no O-2?" is answerable on the
+  // page instead of only inside the engine.
+  const ladder = useMemo(
+    () => promotionLadder(branch, track, grade, Math.max(0, yosNow), serviceYears),
+    [branch, track, grade, yosNow, serviceYears]
   );
 
   const basePayNow = basePayFor(basepay, grade, Math.max(0, yosNow));
@@ -1246,7 +1293,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     className={pctInput}
                     aria-label="Current years of service"
                   />
-                  <span className="text-gray-600">YOS</span>
+                  <span className="inline-flex items-center gap-1.5 text-gray-600">
+                    YOS
+                    <InfoDot text={TIMING_BASIS[track]} />
+                  </span>
                 </div>
 
                 {basePayNow !== null ? (
@@ -1279,12 +1329,19 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {promotionsPreview.map((p) => (
                       <span
-                        key={p.monthIndex}
+                        key={p.toGrade}
                         className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
                         style={{ backgroundColor: gradeColor(p.toGrade) }}
-                        title={p.competitive ? "Board/exam-driven — typical timing, not guaranteed" : "Largely time-based"}
+                        title={
+                          p.behindSchedule
+                            ? "Typical point already passed — modelled as pinning now"
+                            : p.competitive
+                              ? "Board/exam-driven — typical timing, not guaranteed"
+                              : "Largely time-based"
+                        }
                       >
-                        {p.toGrade} · {startYear + Math.floor(p.monthIndex / 12)}
+                        {p.toGrade} ·{" "}
+                        {p.behindSchedule ? "now" : startYear + Math.floor(p.monthIndex / 12)}
                         {p.competitive ? "*" : ""}
                       </span>
                     ))}
@@ -1297,6 +1354,56 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   <p className="text-[11px] text-gray-400">
                     No typical promotions fall inside this service window.
                   </p>
+                )}
+
+                {modelPromotions && (
+                  <details className="pt-1">
+                    <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
+                      How promotions are modelled
+                    </summary>
+                    <div className="mt-2 space-y-2 rounded-2xl border p-3">
+                      <p className="text-[11px] leading-4 text-gray-600">{TIMING_BASIS[track]}</p>
+                      <ul className="space-y-1.5">
+                        {ladder.map((s) => (
+                          <li key={s.toGrade} className={`text-xs ${LADDER_STATUS_TEXT[s.status]}`}>
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-semibold">{s.toGrade}</span>
+                              <span>{tisPointLabel(s.tisMonths)}</span>
+                              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                                {s.competitive ? "board" : "automatic"}
+                              </span>
+                              <span className="font-medium">
+                                {s.status === "held"
+                                  ? "already held"
+                                  : s.status === "due"
+                                    ? "typical point passed — modelled as now"
+                                    : s.status === "upcoming"
+                                      ? `projected ${startYear + Math.floor((s.monthIndex ?? 0) / 12)}`
+                                      : "after your service window"}
+                              </span>
+                            </span>
+                            {s.note && (
+                              <span className="mt-0.5 block text-[11px] leading-4 text-gray-400">
+                                {s.note}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] leading-4 text-gray-500">{TIMING_DISCLAIMER}</p>
+                      <p className="text-[11px] leading-4 text-gray-400">
+                        {"Schedule source: "}
+                        <a
+                          href={BRANCHES[branch].source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline underline-offset-2"
+                        >
+                          {BRANCHES[branch].source.label}
+                        </a>
+                      </p>
+                    </div>
+                  </details>
                 )}
 
                 <div className="flex items-center gap-2 pt-1 text-xs text-gray-600">
@@ -1391,7 +1498,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             {/* TSP */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">TSP</h2>
+                <h2 className="text-lg font-semibold">
+                  TSP{" "}
+                  <InfoDot
+                    text={`${TSP_LIMIT_SENTENCE}\n\nContributions are a percent of base pay only — not BAH or BAS.\n\n${TSP_AGENCY_MONEY_NOTE}\n\nThe projection caps your own contributions at the limit and holds it flat in future years.`}
+                  />
+                </h2>
                 <span
                   className="cursor-help text-sm font-semibold"
                   title="Total flowing into your TSP this month: your contribution plus the agency's. It rises automatically as promotions and YOS raise your base pay."
@@ -1432,10 +1544,11 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     }
                     className={pctInput}
                     aria-label="TSP contribution percent of base pay"
-                    title="TSP contributions are a percent of base pay only — not BAH or BAS. 5% collects the full BRS match."
+                    title={`TSP contributions are a percent of base pay only — not BAH or BAS. 5% collects the full BRS match. ${TSP_MAX_EARLY_WARNING}`}
                   />
                   <span className="text-gray-600">% of base pay</span>
                 </div>
+                <p className="text-[11px] text-gray-400">{TSP_LIMIT_HINT}</p>
                 <label className="flex items-center gap-2 text-xs text-gray-600">
                   <input type="checkbox" checked={brs} onChange={(e) => setBrs(e.target.checked)} />
                   BRS agency contributions (1% automatic + up to 4% match)
@@ -1466,6 +1579,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   )}
                   {" — these grow as your pay grows (see Pay & Rank tab)."}
                 </p>
+
+                <TspResetCalculator
+                  monthlyBasePay={basePayNow ?? 0}
+                  currentPct={contribPct}
+                  onApply={(pct) => setContribPct(pct)}
+                />
 
                 <details className="pt-1">
                   <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
@@ -1615,7 +1734,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   Civilian IRA{" "}
                   <InfoDot
                     text={
-                      "A Roth or Traditional IRA at a brokerage — unlike the TSP, you can keep contributing after you separate.\n\nContributions run until the age you set; the return compounds net of the fee you enter.\n\nCapped at the annual IRS limit."
+                      `${IRA_LIMIT_SENTENCE} ${IRA_SEPARATE_FROM_TSP_NOTE}\n\nA Roth or Traditional IRA at a brokerage — unlike the TSP, you can keep contributing after you separate.\n\nContributions run until the age you set and are capped at the limit above; the return compounds net of the fee you enter.\n\n${ROTH_IRA_PHASEOUT_NOTE}`
                     }
                   />
                 </h2>
@@ -1683,7 +1802,9 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     type="button"
                     onClick={() => setIraMonthly(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
                     className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                    title="Set the while-serving contribution to the pace that reaches the 2026 IRA annual limit."
+                    title={`Set the while-serving contribution to the pace that reaches the ${fmtUSD0(
+                      IRA_CONTRIBUTION_LIMIT_2026
+                    )} 2026 IRA annual limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
                   >
                     Max
                   </button>
@@ -1716,11 +1837,14 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     type="button"
                     onClick={() => setIraMonthlyAfter(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
                     className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                    title="Set the after-service contribution to the pace that reaches the 2026 IRA annual limit."
+                    title={`Set the after-service contribution to the pace that reaches the ${fmtUSD0(
+                      IRA_CONTRIBUTION_LIMIT_2026
+                    )} 2026 IRA annual limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
                   >
                     Max
                   </button>
                 </div>
+                <p className="text-[11px] text-gray-400">{IRA_LIMIT_HINT}</p>
                 {iraMonthly * 12 > IRA_CONTRIBUTION_LIMIT_2026 && (
                   <p className="text-xs text-amber-700">
                     Capped at the {fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026)} annual IRS limit (
@@ -1978,7 +2102,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   Civilian salary &amp; 401(k){" "}
                   <InfoDot
                     text={
-                      "What you expect to earn after leaving the military, and the employer retirement plan that comes with it.\n\nThe 401(k) starts the month you separate: your percentage plus the employer match, taken from the salary you assume.\n\nFees vary widely by plan (often 0.3–1%+ all-in) — fold them into the return you assume."
+                      `2026 limit: ${TSP_LIMIT_SUMMARY} of your own pay. ${DEFERRAL_SHARED_NOTE} Separating mid-year, whatever you already put into the TSP comes off what you can defer at the new job.\n\nWhat you expect to earn after leaving the military, and the employer plan that comes with it. The 401(k) starts the month you separate: your percentage plus the employer match, which does not count against your limit.\n\nFees vary widely by plan (often 0.3–1%+ all-in) — fold them into the return you assume.`
                     }
                   />
                 </h2>
@@ -2079,7 +2203,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                     title={`Set your percentage so this salary reaches the ${fmtUSD0(
                       TSP_ELECTIVE_DEFERRAL_LIMIT_2026
-                    )} annual employee limit (the match doesn't count against it). Set a salary first.`}
+                    )} 2026 annual employee limit — shared with the TSP in the same calendar year, and the employer match doesn't count against it. Set a salary first.`}
                   >
                     Max
                   </button>
@@ -2106,6 +2230,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   />
                   <span>%/yr</span>
                 </div>
+                <p className="text-[11px] text-gray-400">{K401_LIMIT_HINT}</p>
                 {civSalary === 0 && (
                   <p className="text-xs text-gray-500">
                     Set an expected salary to model the 401(k) — it starts the month you separate.
@@ -2778,9 +2903,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </table>
               </div>
               <p className="mt-2">
-                Not modeled: taxes on the investment account, TSP contribution-limit growth,
-                BAH/BAS (allowances aren&apos;t TSP-matched), the High-3/BRS pension, or early
-                promotions. Promotion timing comes from the same per-branch schedules as the{" "}
+                Not modeled: taxes on the investment account, growth in the contribution limits
+                (the 2026 TSP, IRA, and 401(k) limits are held flat in every future year, and
+                age-50+ catch-up room is never added), BAH/BAS (allowances aren&apos;t TSP-matched),
+                the High-3/BRS pension, or early promotions. Promotion timing comes from the same per-branch schedules as the{" "}
                 <Link href="/toolkits/promotion-timeline" className="underline underline-offset-2">
                   Career Timeline
                 </Link>

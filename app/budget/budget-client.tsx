@@ -12,15 +12,20 @@ import {
 } from "@/lib/sankey/model";
 import {
   DEFAULT_FUND_ALLOCATION,
+  TSP_AGENCY_MONEY_NOTE,
   TSP_ELECTIVE_DEFERRAL_LIMIT_2026,
   TSP_FUNDS,
+  TSP_LIMIT_SENTENCE,
+  TSP_MAX_EARLY_WARNING,
   type FundAllocation,
 } from "@/lib/pay/tsp";
 import {
   IRA_CONTRIBUTION_LIMIT_2026,
   IRA_FEE_DISCLAIMER,
+  IRA_LIMIT_SENTENCE,
   IRA_PROVIDER_CONTEXT,
   IRA_TYPE_LABELS,
+  ROTH_IRA_PHASEOUT_NOTE,
   type IraType,
 } from "@/lib/pay/ira";
 import {
@@ -68,6 +73,7 @@ import {
 import { filesToZipBlob } from "@/lib/export/zip";
 import PlanFlow from "@/components/PlanFlow";
 import InfoDot from "@/components/InfoDot";
+import TspResetCalculator from "@/components/TspResetCalculator";
 import HoverHint from "@/components/HoverHint";
 import ReportPanel from "@/components/ReportPanel";
 
@@ -1096,7 +1102,9 @@ export default function BudgetClient() {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">
                   TSP (retirement){" "}
-                  <InfoDot text="TSP contributions are a percent of base pay only — not BAH or BAS. Enter the percent and we do the math; it flows through the chart as its own outflow. If your pay import already includes TSP as an expense row, leave this off to avoid double-counting." />
+                  <InfoDot
+                    text={`${TSP_LIMIT_SENTENCE}\n\nContributions are a percent of base pay only — not BAH or BAS. Enter the percent and we do the math; it flows through the chart as its own outflow.\n\n${TSP_AGENCY_MONEY_NOTE}\n\nIf your pay import already includes TSP as an expense row, leave this off to avoid double-counting.`}
+                  />
                 </h2>
                 <div className="flex items-center gap-2">
                   {showTspPanel && <span className="text-sm font-semibold">{fmtUSD0(tspMonthly)}/mo</span>}
@@ -1166,7 +1174,9 @@ export default function BudgetClient() {
                   type="button"
                   onClick={maxTsp}
                   className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                  title="Set the percentage that reaches the 2026 annual limit."
+                  title={`Set the percentage that reaches the ${fmtUSD0(
+                    TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                  )} 2026 annual limit. ${TSP_MAX_EARLY_WARNING}`}
                 >
                   Max
                 </button>
@@ -1212,6 +1222,13 @@ export default function BudgetClient() {
                       )}%) left before you hit the limit.`}
                 </div>
               </div>
+
+              <TspResetCalculator
+                className="mt-3"
+                monthlyBasePay={Math.max(0, tspBase?.amount ?? 0)}
+                currentPct={tspPct}
+                onApply={(pct) => setTspPct(pct)}
+              />
 
               <p className="mt-3 text-xs text-gray-500">
                 Wondering what this grows into over your commitment?{" "}
@@ -1301,7 +1318,9 @@ export default function BudgetClient() {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">
                   Civilian IRA (optional){" "}
-                  <InfoDot text="An Individual Retirement Account you open yourself at a brokerage — separate from the TSP. A common home for leftover money after expenses. Flows through the chart as its own outflow and counts toward the savings bucket." />
+                  <InfoDot
+                    text={`${IRA_LIMIT_SENTENCE}\n\nAn Individual Retirement Account you open yourself at a brokerage — separate from the TSP, with its own limit, so maxing one has no effect on the other.\n\nA common home for leftover money after expenses. Flows through the chart as its own outflow and counts toward the savings bucket.\n\n${ROTH_IRA_PHASEOUT_NOTE}`}
+                  />
                 </h2>
                 <div className="flex items-center gap-2">
                   {iraEnabled && <span className="text-sm font-semibold">{fmtUSD0(iraMonthlyEff)}/mo</span>}
@@ -1364,7 +1383,9 @@ export default function BudgetClient() {
                       type="button"
                       onClick={() => setIraMonthly(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
                       className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                      title="Set the monthly contribution that reaches the 2026 IRA annual limit."
+                      title={`Set the monthly contribution that reaches the ${fmtUSD0(
+                        IRA_CONTRIBUTION_LIMIT_2026
+                      )} 2026 IRA annual limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
                     >
                       Max
                     </button>

@@ -43,10 +43,17 @@ describe("gradeNumber / gradeAtTis", () => {
 
 describe("upcomingPromotions", () => {
   it("lists promotions between now and separation only", () => {
-    // Army E-4 at 4 YOS staying 5 more years: E-5 (36mo — already past),
-    // E-6 at 84mo TIS = 36 months from now. E-7 (144mo) is beyond 9 YOS.
+    // Army E-4 at 4 YOS staying 5 more years: E-5's 36-month point is already
+    // behind them, so it shows as due now rather than being dropped (the model
+    // pays that grade either way); E-6 at 84mo TIS = 36 months from now.
+    // E-7 (144mo) is beyond 9 YOS.
     const promos = upcomingPromotions("army", "enlisted", "E-4", 4, 5);
-    expect(promos).toEqual([{ monthIndex: 36, toGrade: "E-6", competitive: true }]);
+    expect(promos.map((p) => ({ monthIndex: p.monthIndex, toGrade: p.toGrade }))).toEqual([
+      { monthIndex: 0, toGrade: "E-5" },
+      { monthIndex: 36, toGrade: "E-6" },
+    ]);
+    expect(promos[0].behindSchedule).toBe(true);
+    expect(promos[1].behindSchedule).toBe(false);
   });
 
   it("skips grades at or below the current grade", () => {

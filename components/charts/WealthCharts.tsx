@@ -104,6 +104,8 @@ export function GrowthChart({
   startYear,
   currentAge,
   serviceYears,
+  baselineSeries,
+  baselineLabel = "Before tuning",
   svgRef,
 }: {
   projection: CareerProjection;
@@ -111,6 +113,17 @@ export function GrowthChart({
   startYear: number;
   currentAge: number;
   serviceYears: number;
+  /**
+   * Optional comparison totals drawn as a muted dotted line over the stack —
+   * e.g. the projection before the user started tuning inputs. Points are
+   * matched to the main projection by yearIndex, so a series that is shorter
+   * or longer just draws across the years the two have in common. Omit (or
+   * pass null / an empty array) and the chart renders exactly as it does
+   * without the overlay — the export path relies on that.
+   */
+  baselineSeries?: { yearIndex: number; total: number }[] | null;
+  /** Legend text for the comparison line. */
+  baselineLabel?: string;
   /** Optional ref to the SVG element, for PNG/SVG/PDF export. */
   svgRef?: React.Ref<SVGSVGElement>;
 }) {
@@ -143,7 +156,33 @@ export function GrowthChart({
     ...projection.years,
   ];
   const n = points.length - 1;
-  const maxTotal = Math.max(1, ...points.map((p) => p.total));
+
+  // Comparison overlay. Resolve each baseline point to a column of the main
+  // projection by yearIndex (dropping years the two don't share, so a shorter
+  // or longer baseline simply clamps to the overlap), de-duplicated and sorted
+  // left to right. Empty/absent baseline → an empty list, and every derived
+  // value below collapses back to the plain chart.
+  const rawBaseline = baselineSeries && baselineSeries.length > 0 ? baselineSeries : null;
+  const basePoints: { i: number; total: number }[] = [];
+  if (rawBaseline) {
+    const columnOf = new Map<number, number>();
+    points.forEach((p, i) => columnOf.set(p.yearIndex, i));
+    const byColumn = new Map<number, number>();
+    for (const b of rawBaseline) {
+      const i = columnOf.get(b?.yearIndex);
+      const total = b?.total;
+      if (i === undefined || typeof total !== "number" || !Number.isFinite(total)) continue;
+      byColumn.set(i, Math.max(0, total));
+    }
+    for (const [i, total] of [...byColumn.entries()].sort((a, b) => a[0] - b[0])) {
+      basePoints.push({ i, total });
+    }
+  }
+  const showBaseline = basePoints.length > 0;
+
+  // Spreading an empty list leaves maxTotal exactly as it was before the
+  // overlay existed; with a baseline, a tuned-up "before" curve can't clip.
+  const maxTotal = Math.max(1, ...points.map((p) => p.total), ...basePoints.map((b) => b.total));
   const x = (i: number) => ML + (i / Math.max(1, n)) * (W - ML - MR);
   const y = (v: number) => MT + (1 - v / maxTotal) * (H - MT - MB);
 
@@ -174,6 +213,23 @@ export function GrowthChart({
     .map((p, i) => `${x(i).toFixed(1)},${y(p.realTotal).toFixed(1)}`)
     .join("L");
 
+  const BASELINE_COLOR = "#94a3b8";
+  const BASELINE_DASH = "2 6"; // dotted — reads apart from the 6/4 today's-$ dashes
+  const baseSeg = basePoints.map((b) => `${x(b.i).toFixed(1)},${y(b.total).toFixed(1)}`);
+  // A single overlapping year still shows: a zero-length segment + round caps
+  // draws a dot rather than nothing.
+  const baselinePath = showBaseline
+    ? `M${baseSeg.join("L")}${baseSeg.length === 1 ? `L${baseSeg[0]}` : ""}`
+    : null;
+  // Legend chip sits after the "Total in today's dollars" chip; trim the label
+  // to whatever room is left so a long label can't run past the plot.
+  const legendBaseX = keys.length * 96 + 190;
+  const legendRoom = W - MR - (ML + 8) - legendBaseX - 22;
+  const legendMax = Math.max(6, Math.floor(legendRoom / 6.4));
+  const legendFull = (baselineLabel || "").trim() || "Before tuning";
+  const legendText =
+    legendFull.length > legendMax ? `${legendFull.slice(0, Math.max(1, legendMax - 1))}…` : legendFull;
+
   const step = niceStep(maxTotal / 4);
   const gridVals: number[] = [];
   for (let v = step; v <= maxTotal; v += step) gridVals.push(v);
@@ -187,6 +243,7 @@ export function GrowthChart({
   };
 
   const h = hover !== null ? points[hover] : null;
+  const hBase = hover === null ? undefined : basePoints.find((b) => b.i === hover);
 
   return (
     <svg
@@ -195,7 +252,11 @@ export function GrowthChart({
       width={W}
       height={H}
       role="img"
-      aria-label="Projected balances by year, stacked by account"
+      aria-label={
+        showBaseline
+          ? `Projected balances by year, stacked by account, with a ${legendFull} comparison line`
+          : "Projected balances by year, stacked by account"
+      }
       className="block h-auto w-full touch-none select-none"
       onPointerMove={onMove}
       onPointerLeave={() => setHover(null)}
@@ -212,6 +273,17 @@ export function GrowthChart({
       {[...keys].reverse().map((k) => (
         <path key={k} d={areaPath(k)} fill={ACCOUNT_COLORS[k]} fillOpacity={0.75} />
       ))}
+      {baselinePath && (
+        <path
+          d={baselinePath}
+          fill="none"
+          stroke={BASELINE_COLOR}
+          strokeWidth={2}
+          strokeDasharray={BASELINE_DASH}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
       <path d={`M${realLine}`} fill="none" stroke="#374151" strokeWidth={2} strokeDasharray="6 4" />
 
       {sepX !== null && (
@@ -251,11 +323,29 @@ export function GrowthChart({
             Total in today&apos;s dollars
           </text>
         </g>
+        {showBaseline && (
+          <g transform={`translate(${legendBaseX}, 0)`}>
+            <line
+              x1={0}
+              x2={18}
+              y1={7}
+              y2={7}
+              stroke={BASELINE_COLOR}
+              strokeWidth={2}
+              strokeDasharray={BASELINE_DASH}
+              strokeLinecap="round"
+            />
+            <text x={22} y={11} fill="#374151">
+              {legendText}
+            </text>
+          </g>
+        )}
       </g>
 
       {h && hover !== null && (
         <g>
           <line x1={x(hover)} x2={x(hover)} y1={MT} y2={H - MB} stroke="#94a3b8" strokeWidth={1} />
+          {hBase && <circle cx={x(hover)} cy={y(hBase.total)} r={3.5} fill={BASELINE_COLOR} />}
           <circle cx={x(hover)} cy={y(h.total)} r={4} fill="#0f172a" />
           <Tooltip
             x={x(hover)}
@@ -270,6 +360,15 @@ export function GrowthChart({
               })),
               { label: "Total", value: fmtUSD0(h.total) },
               { label: "Today's $", value: fmtUSD0(h.realTotal) },
+              ...(hBase
+                ? [
+                    { label: "Baseline", value: fmtUSD0(hBase.total), color: BASELINE_COLOR },
+                    {
+                      label: "Difference",
+                      value: `${h.total - hBase.total < 0 ? "-" : "+"}${fmtUSD0(Math.abs(h.total - hBase.total))}`,
+                    },
+                  ]
+                : []),
             ]}
           />
         </g>

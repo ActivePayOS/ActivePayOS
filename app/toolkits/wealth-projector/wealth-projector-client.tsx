@@ -67,6 +67,7 @@ import {
 } from "@/components/charts/WealthCharts";
 import fundPerformance from "@/data/tsp/fund-performance.json";
 import PlanFlow from "@/components/PlanFlow";
+import TuneStrip, { type TuneControl } from "@/components/projector/TuneStrip";
 import Explain from "@/components/Explain";
 import InfoDot from "@/components/InfoDot";
 import HoverHint from "@/components/HoverHint";
@@ -125,6 +126,25 @@ const FUND_KEYS = TSP_FUNDS.map((f) => f.key);
 
 const ENLISTED_GRADES = ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9"];
 const OFFICER_GRADES = ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6"];
+
+// Post-service pay has to start somewhere or the civilian 401(k) silently
+// contributes nothing. This is an openly-labelled assumption, not a forecast —
+// the salary input starts here and the member changes it to their own number.
+const DEFAULT_CIVILIAN_SALARY = 80000;
+
+// Everything the chart-side "Tune this plan" strip can move. The after-service
+// twins live here too: the strip writes both halves of a pair at once, but the
+// sidebar can set them apart, and either edit is a real change from baseline.
+type TuneBaseline = {
+  contribPct: number; // decimal, as the state holds it
+  invMonthly: number;
+  invMonthlyAfter: number;
+  savMonthly: number;
+  savMonthlyAfter: number;
+  iraMonthly: number;
+  iraMonthlyAfter: number;
+  civSalary: number;
+};
 
 // How a promotion ladder step's typical time-in-service point reads in the
 // "How promotions are modelled" disclosure: months while that's the natural
@@ -279,7 +299,9 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
   // ---- Post-military civilian career: assumed salary drives the 401(k)
   // (your % + employer match %), starting at separation. ----
-  const [civSalary, setCivSalary] = useState(0); // expected $/yr after service; 0 = not set
+  // Starts at the DEFAULT_CIVILIAN_SALARY assumption so the 401(k) models
+  // something out of the box; clearing the field back to 0 means "not set".
+  const [civSalary, setCivSalary] = useState(DEFAULT_CIVILIAN_SALARY); // expected $/yr after service
   const [k401Pct, setK401Pct] = useState(6);
   const [k401MatchPct, setK401MatchPct] = useState(4);
   const [k401Type, setK401Type] = useState<"traditional" | "roth">("traditional");
@@ -329,6 +351,20 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [savMonthly, setSavMonthly] = useState(150);
   const [savMonthlyAfter, setSavMonthlyAfter] = useState(150);
   const [savApyPct, setSavApyPct] = useState(PERF.otherAssets.savingsApyPct);
+
+  // ---- "Tune this plan" baseline: the values the chart-side strip can move,
+  // snapshotted on first mount (so prefilled numbers, not hardcoded ones, are
+  // what "before tuning" means). "Set as baseline" re-snapshots them. ----
+  const [tuneBaseline, setTuneBaseline] = useState<TuneBaseline>(() => ({
+    contribPct,
+    invMonthly,
+    invMonthlyAfter,
+    savMonthly,
+    savMonthlyAfter,
+    iraMonthly,
+    iraMonthlyAfter,
+    civSalary,
+  }));
 
   const [tab, setTab] = useState<ResultTab>("growth");
   // Stacked pushes results below the inputs at full width (inputs reflow into
@@ -491,6 +527,122 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     return Math.max(0, feeFree.final.total - projection.final.total);
   }, [careerInput, tspReturnGross, iraReturnPct, projection.final.total]);
 
+  // ---- "Tune this plan": what moved since the baseline, in plain English.
+  // Doubles as the dirty flag — no changes listed means nothing to compare. ----
+  const tuneChanges = useMemo(() => {
+    const out: string[] = [];
+    // Compared raw (not at the whole point the strip steps in) so a percentage
+    // typed into the sidebar still registers as a change.
+    const asPct = (p: number) => `${Math.round(p * 1000) / 10}%`;
+    if (contribPct !== tuneBaseline.contribPct) {
+      out.push(`TSP ${asPct(contribPct)} (was ${asPct(tuneBaseline.contribPct)})`);
+    }
+
+    // A pair the strip moves together reads as one line; split apart only when
+    // the sidebar has actually set the two halves differently.
+    const pair = (
+      label: string,
+      now: number,
+      nowAfter: number,
+      was: number,
+      wasAfter: number
+    ) => {
+      if (now === was && nowAfter === wasAfter) return;
+      if (now === nowAfter && was === wasAfter) {
+        out.push(`${label} ${fmtUSD0(now)}/mo (was ${fmtUSD0(was)})`);
+        return;
+      }
+      if (now !== was) {
+        out.push(`${label} ${fmtUSD0(now)}/mo while serving (was ${fmtUSD0(was)})`);
+      }
+      if (nowAfter !== wasAfter) {
+        out.push(`${label} ${fmtUSD0(nowAfter)}/mo after service (was ${fmtUSD0(wasAfter)})`);
+      }
+    };
+    pair("Investing", invMonthly, invMonthlyAfter, tuneBaseline.invMonthly, tuneBaseline.invMonthlyAfter);
+    pair("Savings", savMonthly, savMonthlyAfter, tuneBaseline.savMonthly, tuneBaseline.savMonthlyAfter);
+    pair("IRA", iraMonthly, iraMonthlyAfter, tuneBaseline.iraMonthly, tuneBaseline.iraMonthlyAfter);
+
+    if (civSalary !== tuneBaseline.civSalary) {
+      out.push(
+        `Civilian salary ${fmtUSD0(civSalary)}/yr (was ${fmtUSD0(tuneBaseline.civSalary)})`
+      );
+    }
+    return out;
+  }, [
+    contribPct,
+    invMonthly,
+    invMonthlyAfter,
+    savMonthly,
+    savMonthlyAfter,
+    iraMonthly,
+    iraMonthlyAfter,
+    civSalary,
+    tuneBaseline,
+  ]);
+  const tuneDirty = tuneChanges.length > 0;
+
+  // The baseline salary drives a baseline 401(k) the same way the live one
+  // does — same percentages, same elective-deferral cap.
+  const baselineK401EmployeeMonthly = Math.min(
+    (Math.max(0, tuneBaseline.civSalary) / 12) * (Math.max(0, k401Pct) / 100),
+    TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
+  );
+  const baselineK401MatchMonthly =
+    (Math.max(0, tuneBaseline.civSalary) / 12) * (Math.max(0, k401MatchPct) / 100);
+
+  // The same projection run on the pre-tuning numbers — the dashed "Before
+  // tuning" line on the chart and the delta below it. Null (and never
+  // computed) while the plan still matches the baseline.
+  const baselineProjection = useMemo(() => {
+    if (!tuneDirty) return null;
+    return projectCareerWealth({
+      ...careerInput,
+      tspPct: tuneBaseline.contribPct,
+      invMonthly: invOn ? tuneBaseline.invMonthly : 0,
+      invMonthlyAfter: invOn ? tuneBaseline.invMonthlyAfter : 0,
+      savMonthly: savOn ? tuneBaseline.savMonthly : 0,
+      savMonthlyAfter: savOn ? tuneBaseline.savMonthlyAfter : 0,
+      iraMonthly: iraOn ? tuneBaseline.iraMonthly : 0,
+      iraMonthlyAfter: iraOn ? tuneBaseline.iraMonthlyAfter : 0,
+      k401Monthly: k401On ? baselineK401EmployeeMonthly : 0,
+      k401MatchMonthly: k401On ? baselineK401MatchMonthly : 0,
+    });
+  }, [
+    tuneDirty,
+    careerInput,
+    tuneBaseline,
+    invOn,
+    savOn,
+    iraOn,
+    k401On,
+    baselineK401EmployeeMonthly,
+    baselineK401MatchMonthly,
+  ]);
+
+  const tuneDelta = useMemo(() => {
+    if (!baselineProjection) return null;
+    const was = baselineProjection.final.total;
+    return {
+      endTotal: projection.final.total - was,
+      realTotal: projection.final.realTotal - baselineProjection.final.realTotal,
+      pct: was > 0 ? ((projection.final.total - was) / was) * 100 : 0,
+      endAge: currentAge + projectionYears,
+      changes: tuneChanges,
+    };
+  }, [baselineProjection, projection, currentAge, projectionYears, tuneChanges]);
+
+  // Only handed to the on-screen growth chart, and only while the plan differs
+  // from the baseline — the offscreen export charts never receive it, so
+  // reports stay baseline-free.
+  const baselineSeries = useMemo(
+    () =>
+      baselineProjection
+        ? baselineProjection.years.map((s) => ({ yearIndex: s.yearIndex, total: s.total }))
+        : null,
+    [baselineProjection]
+  );
+
   // ---- Roth vs Traditional trade space ----
   const rothMonthlyEff =
     rothMonthlyOverride > 0
@@ -640,6 +792,116 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   function num(v: string, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+  }
+
+  // ---- Chart-side tuning: the same setters the sidebar uses, so the strip and
+  // the sidebar inputs stay in lockstep (one state, two places to reach it). ----
+  const PAIRED_TUNE_NOTE =
+    "Moves the while-serving and after-service amounts together, so the whole curve responds.\n\nWant a different pace once you separate? The account's card in the sidebar sets each one on its own — this strip and those inputs drive the same numbers.";
+
+  const tuneControls: TuneControl[] = [
+    {
+      key: "tsp",
+      label: "TSP contribution",
+      value: Math.round(contribPct * 100),
+      onChange: (v) => setContribPct(Math.max(0, Math.min(100, v)) / 100),
+      step: 1,
+      min: 0,
+      max: 100,
+      suffix: "% of base pay",
+      width: "w-12",
+      ariaLabel: "TSP contribution percent of base pay",
+    },
+    {
+      key: "invest",
+      label: "Investing",
+      value: invMonthly,
+      onChange: (v) => {
+        setInvMonthly(v);
+        setInvMonthlyAfter(v);
+      },
+      step: 50,
+      min: 0,
+      prefix: "$",
+      suffix: "/mo",
+      disabled: !invOn,
+      disabledReason: "Investment account is switched off",
+      info: PAIRED_TUNE_NOTE,
+      ariaLabel: "Monthly investment contribution",
+    },
+    {
+      key: "savings",
+      label: "Savings",
+      value: savMonthly,
+      onChange: (v) => {
+        setSavMonthly(v);
+        setSavMonthlyAfter(v);
+      },
+      step: 50,
+      min: 0,
+      prefix: "$",
+      suffix: "/mo",
+      disabled: !savOn,
+      disabledReason: "Savings account is switched off",
+      info: PAIRED_TUNE_NOTE,
+      ariaLabel: "Monthly savings contribution",
+    },
+    {
+      key: "ira",
+      label: "IRA",
+      value: iraMonthly,
+      onChange: (v) => {
+        setIraMonthly(v);
+        setIraMonthlyAfter(v);
+      },
+      step: 50,
+      min: 0,
+      prefix: "$",
+      suffix: "/mo",
+      disabled: !iraOn,
+      disabledReason: "IRA is switched off",
+      info: PAIRED_TUNE_NOTE,
+      ariaLabel: "Monthly IRA contribution",
+    },
+    {
+      key: "civSalary",
+      label: "Civilian salary",
+      value: civSalary,
+      onChange: setCivSalary,
+      step: 5000,
+      min: 0,
+      prefix: "$",
+      suffix: "/yr after service",
+      width: "w-20",
+      disabled: !k401On,
+      disabledReason: "Civilian 401(k) is switched off",
+      info: "An assumption you own — it drives the civilian 401(k) (your percentage plus the employer match) from the month you separate.\n\nThe percentages and the return live on the Civilian salary & 401(k) card in the sidebar.",
+      ariaLabel: "Expected civilian salary per year after service",
+    },
+  ];
+
+  function resetTuning() {
+    setContribPct(tuneBaseline.contribPct);
+    setInvMonthly(tuneBaseline.invMonthly);
+    setInvMonthlyAfter(tuneBaseline.invMonthlyAfter);
+    setSavMonthly(tuneBaseline.savMonthly);
+    setSavMonthlyAfter(tuneBaseline.savMonthlyAfter);
+    setIraMonthly(tuneBaseline.iraMonthly);
+    setIraMonthlyAfter(tuneBaseline.iraMonthlyAfter);
+    setCivSalary(tuneBaseline.civSalary);
+  }
+
+  function adoptTuningBaseline() {
+    setTuneBaseline({
+      contribPct,
+      invMonthly,
+      invMonthlyAfter,
+      savMonthly,
+      savMonthlyAfter,
+      iraMonthly,
+      iraMonthlyAfter,
+      civSalary,
+    });
   }
 
   const destinationOf = (id: string, suggested: ContributionDestination) =>
@@ -2138,7 +2400,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                       min={0}
                       step={5000}
                       value={civSalary === 0 ? "" : civSalary}
-                      placeholder="80000"
+                      placeholder={String(DEFAULT_CIVILIAN_SALARY)}
                       onChange={(e) => setCivSalary(Math.max(0, num(e.target.value)))}
                       className="w-24 bg-transparent text-right outline-none"
                       aria-label="Expected civilian salary per year after service"
@@ -2149,6 +2411,11 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     {civSalary > 0 ? ` (≈ ${fmtUSD0(civSalary / 12)}/mo)` : ""}
                   </span>
                 </div>
+                <p className="text-[11px] text-gray-400">
+                  {`Assumes ${fmtUSD0(
+                    DEFAULT_CIVILIAN_SALARY
+                  )} to start — change it to your own expected salary.`}
+                </p>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
                   <span>401(k):</span>
                   <select
@@ -2362,6 +2629,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     startYear={startYear}
                     currentAge={currentAge}
                     serviceYears={serviceYears}
+                    baselineSeries={baselineSeries}
                   />
                 )}
                 {tab === "pay" && <PayRankChart projection={projection} startYear={startYear} />}
@@ -2709,6 +2977,17 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   </div>
                 )}
               </div>
+
+              {/* Tune the plan right under the curve it moves. */}
+              {tab === "growth" && (
+                <TuneStrip
+                  controls={tuneControls}
+                  delta={tuneDelta}
+                  dirty={tuneDirty}
+                  onReset={resetTuning}
+                  onSetBaseline={adoptTuningBaseline}
+                />
+              )}
 
               {/* Exports — standardized report panel + chart images */}
               <div className="mt-4 space-y-2">

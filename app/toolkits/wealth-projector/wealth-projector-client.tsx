@@ -368,8 +368,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
   const [tab, setTab] = useState<ResultTab>("growth");
   // Stacked pushes results below the inputs at full width (inputs reflow into
-  // columns); side-by-side is the classic 380px inputs rail.
-  const [stackedLayout, setStackedLayout] = useState(false);
+  // columns); side-by-side is the classic 380px inputs rail. Stacked is the
+  // default: the chart and its tuning strip get the full width, which is where
+  // the projector's answer actually lives.
+  const [stackedLayout, setStackedLayout] = useState(true);
 
   // ---- Exports (csv/txt/pdf in-browser; xlsx via the stateless route) ----
   const [reportFormat, setReportFormat] = useState<ReportFormat>("csv");

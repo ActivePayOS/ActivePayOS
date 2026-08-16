@@ -68,6 +68,15 @@ import {
 import fundPerformance from "@/data/tsp/fund-performance.json";
 import PlanFlow from "@/components/PlanFlow";
 import TuneStrip, { type TuneControl } from "@/components/projector/TuneStrip";
+import {
+  FieldList,
+  FieldNote,
+  FieldRow,
+  FieldSelect,
+  MiniButton,
+  SelectRow,
+  UnitInput,
+} from "@/components/projector/Field";
 import Explain from "@/components/Explain";
 import InfoDot from "@/components/InfoDot";
 import HoverHint from "@/components/HoverHint";
@@ -804,13 +813,13 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const tuneControls: TuneControl[] = [
     {
       key: "tsp",
-      label: "TSP contribution",
+      label: "TSP (% of base pay)",
       value: Math.round(contribPct * 100),
       onChange: (v) => setContribPct(Math.max(0, Math.min(100, v)) / 100),
       step: 1,
       min: 0,
       max: 100,
-      suffix: "% of base pay",
+      suffix: "%",
       width: "w-12",
       ariaLabel: "TSP contribution percent of base pay",
     },
@@ -867,13 +876,13 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     },
     {
       key: "civSalary",
-      label: "Civilian salary",
+      label: "Salary after service",
       value: civSalary,
       onChange: setCivSalary,
       step: 5000,
       min: 0,
       prefix: "$",
-      suffix: "/yr after service",
+      suffix: "/yr",
       width: "w-20",
       disabled: !k401On,
       disabledReason: "Civilian 401(k) is switched off",
@@ -1388,198 +1397,219 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             {/* Service window & horizon */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold">Service &amp; horizon</h2>
-              <div className="mt-3 space-y-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">I am</span>
-                  <select
-                    value={Math.round(currentAge)}
-                    onChange={(e) => setCurrentAge(Math.max(17, Math.min(70, num(e.target.value, 22))))}
-                    className="field rounded-lg px-2 py-1 text-sm"
-                    aria-label="Current age"
-                  >
-                    {Array.from({ length: 54 }, (_, i) => i + 17).map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-600">years old, staying in</span>
-                  <select
-                    value={Math.round(serviceYears)}
-                    onChange={(e) => setServiceYears(Math.max(0, Math.min(30, num(e.target.value, 5))))}
-                    className="field rounded-lg px-2 py-1 text-sm"
-                    aria-label="Years more you'll serve"
-                    title="How much longer you stay on active duty — your remaining contract, or the total you expect to serve. Military pay, TSP contributions, and the BRS match run only through this window."
-                  >
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <option key={i} value={i}>
-                        {i === 0 ? "0 — separating now" : i === 20 ? "20 — retirement eligible" : i}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-600">more years{" "}
-                    <span className="text-gray-400">(→ {sepYear}, age {currentAge + serviceYears})</span>
-                  </span>
-                </div>
+              <FieldList>
+                <SelectRow
+                  label="My age today"
+                  value={Math.round(currentAge)}
+                  onChange={(v) => setCurrentAge(Math.max(17, Math.min(70, num(v, 22))))}
+                  ariaLabel="Current age"
+                >
+                  {Array.from({ length: 54 }, (_, i) => i + 17).map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </SelectRow>
 
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-gray-600">Project until</span>
-                  <span className="inline-flex items-center rounded-full border p-1 text-xs" role="group">
-                    <button
-                      type="button"
-                      onClick={() => setHorizonMode("separation")}
-                      className={`rounded-full px-3 py-1 font-medium transition ${
-                        horizonMode === "separation"
-                          ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                          : "text-gray-600 hover:text-gray-900"
-                      }`}
+                <SelectRow
+                  label="Years I'll keep serving"
+                  value={Math.round(serviceYears)}
+                  onChange={(v) => setServiceYears(Math.max(0, Math.min(30, num(v, 5))))}
+                  ariaLabel="Years more you'll serve"
+                  title="How much longer you stay on active duty — your remaining contract, or the total you expect to serve. Military pay, TSP contributions, and the BRS match run only through this window."
+                >
+                  {Array.from({ length: 31 }, (_, i) => (
+                    <option key={i} value={i}>
+                      {i === 0 ? "0 — separating now" : i === 20 ? "20 — retirement eligible" : i}
+                    </option>
+                  ))}
+                </SelectRow>
+
+                <FieldRow
+                  label="Project until"
+                  control={
+                    <span
+                      className="inline-flex items-center rounded-full border p-1 text-sm"
+                      role="group"
                     >
-                      Separation
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHorizonMode("age")}
-                      className={`rounded-full px-3 py-1 font-medium transition ${
-                        horizonMode === "age"
-                          ? "bg-[var(--field-bg)] text-[var(--field-text)]"
-                          : "text-gray-600 hover:text-gray-900"
-                      }`}
-                    >
-                      An age I pick
-                    </button>
-                  </span>
-                  {horizonMode === "age" && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <select
-                        value={Math.max(currentAge + 1, Math.min(90, Math.round(targetAge)))}
-                        onChange={(e) =>
-                          setTargetAge(Math.max(currentAge + 1, Math.min(90, num(e.target.value, 60))))
-                        }
-                        className="field rounded-lg px-2 py-1 text-sm"
-                        aria-label="Project to this age"
-                        title="The projection keeps compounding to this age even after you separate — useful for seeing what your military-era savings are worth at, say, 60."
+                      <button
+                        type="button"
+                        onClick={() => setHorizonMode("separation")}
+                        className={`whitespace-nowrap rounded-full px-3 py-1 font-medium transition ${
+                          horizonMode === "separation"
+                            ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
                       >
-                        {Array.from({ length: 90 - currentAge }, (_, i) => currentAge + 1 + i).map(
-                          (a) => (
-                            <option key={a} value={a}>
-                              {a}
-                            </option>
-                          )
-                        )}
-                      </select>
-                      <span className="text-xs text-gray-500">(→ {endYear})</span>
+                        Separation
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHorizonMode("age")}
+                        className={`whitespace-nowrap rounded-full px-3 py-1 font-medium transition ${
+                          horizonMode === "age"
+                            ? "bg-[var(--field-bg)] text-[var(--field-text)]"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        An age I pick
+                      </button>
                     </span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500">
-                  {horizonMode === "age" && projectionYears > serviceYears
-                    ? `Serving ${serviceYears} more year${serviceYears === 1 ? "" : "s"}, then watching it compound ${
-                        projectionYears - serviceYears
-                      } more — through age ${currentAge + projectionYears}.`
-                    : "Projecting through the end of your service window."}
-                </p>
+                  }
+                />
 
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span>Inflation assumption</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.1}
-                    value={inflationPct}
-                    onChange={(e) => setInflationPct(Math.max(0, Math.min(10, num(e.target.value))))}
-                    className={pctInput}
-                    aria-label="Inflation percent per year"
-                    title="Used only to translate future balances into today's purchasing power (the dashed line and Today's $ column). The Federal Reserve targets 2%."
-                  />
-                  <span>%/yr (for today&apos;s-dollar figures)</span>
-                </div>
-              </div>
+                {horizonMode === "age" && (
+                  <SelectRow
+                    label="Compound through age"
+                    value={Math.max(currentAge + 1, Math.min(90, Math.round(targetAge)))}
+                    onChange={(v) =>
+                      setTargetAge(Math.max(currentAge + 1, Math.min(90, num(v, 60))))
+                    }
+                    ariaLabel="Project to this age"
+                    title="The projection keeps compounding to this age even after you separate — useful for seeing what your military-era savings are worth at, say, 60."
+                  >
+                    {Array.from({ length: 90 - currentAge }, (_, i) => currentAge + 1 + i).map(
+                      (a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      )
+                    )}
+                  </SelectRow>
+                )}
+
+                <FieldRow
+                  label="Inflation (today's dollars)"
+                  control={
+                    <UnitInput
+                      value={inflationPct}
+                      onChange={(v) => setInflationPct(Math.max(0, Math.min(10, num(v))))}
+                      suffix="%/yr"
+                      width="w-12"
+                      min={0}
+                      max={10}
+                      step={0.1}
+                      ariaLabel="Inflation percent per year"
+                      title="Used only to translate future balances into today's purchasing power (the dashed line and Today's $ column). The Federal Reserve targets 2%."
+                    />
+                  }
+                />
+              </FieldList>
+              <FieldNote className="mt-3">
+                {horizonMode === "age" && projectionYears > serviceYears
+                  ? `Separating in ${sepYear} at age ${
+                      currentAge + serviceYears
+                    }, then compounding ${projectionYears - serviceYears} more year${
+                      projectionYears - serviceYears === 1 ? "" : "s"
+                    } — through age ${currentAge + projectionYears} in ${endYear}.`
+                  : `Separating in ${sepYear} at age ${
+                      currentAge + serviceYears
+                    } — projecting through the end of your service window.`}
+              </FieldNote>
             </div>
 
             {/* Career path */}
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold">
-                Career path{" "}
-                <InfoDot text="Your projected rank sets your base pay from the DFAS tables, and base pay is what the TSP percentage and BRS match are computed from." />
-              </h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">
+                  Career path{" "}
+                  <InfoDot text="Your projected rank sets your base pay from the DFAS tables, and base pay is what the TSP percentage and BRS match are computed from." />
+                </h2>
+                {basePayNow !== null && (
+                  <Explain
+                    title={`Looked up in the ${basepay.year ?? 2026} DFAS pay table for ${grade} at ${yosNow} years of service. This is the number your TSP percentage and the BRS match multiply.`}
+                    className="whitespace-nowrap text-sm font-semibold"
+                  >
+                    {`${fmtUSD0(basePayNow)}/mo base`}
+                  </Explain>
+                )}
+              </div>
               {paySnap && (
-                <p className="mt-1 rounded-xl bg-[var(--field-bg)]/50 px-2.5 py-1.5 text-[11px] text-gray-600">
+                <p className="mt-1 rounded-xl bg-[var(--field-bg)]/50 px-2.5 py-1.5 text-xs text-gray-600">
                   {`Pre-filled from your Pay Calculator (${paySnap.grade} @ ${paySnap.yos} YOS) — edit anything.`}
                 </p>
               )}
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value as BranchId)}
-                    className="field rounded-lg px-2 py-1.5 text-sm"
-                    aria-label="Service branch"
-                  >
-                    {BRANCH_OPTIONS.map((b) => (
-                      <option key={b.value} value={b.value}>
-                        {b.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={track}
-                    onChange={(e) => {
-                      const t = e.target.value as Track;
-                      setTrack(t);
-                      setGrade(t === "officer" ? "O-1" : "E-4");
-                    }}
-                    className="field rounded-lg px-2 py-1.5 text-sm"
-                    aria-label="Enlisted or officer"
-                  >
-                    <option value="enlisted">Enlisted</option>
-                    <option value="officer">Officer</option>
-                  </select>
-                  <select
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                    className="field rounded-lg px-2 py-1.5 text-sm"
-                    aria-label="Current pay grade"
-                  >
-                    {(track === "officer" ? OFFICER_GRADES : ENLISTED_GRADES).map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-600">at</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={40}
-                    value={yosNow}
-                    onChange={(e) => setYosNow(Math.max(0, Math.min(40, num(e.target.value))))}
-                    className={pctInput}
-                    aria-label="Current years of service"
-                  />
-                  <span className="inline-flex items-center gap-1.5 text-gray-600">
-                    YOS
-                    <InfoDot text={TIMING_BASIS[track]} />
-                  </span>
-                </div>
+              <FieldList>
+                <SelectRow
+                  label="Branch"
+                  value={branch}
+                  onChange={(v) => setBranch(v as BranchId)}
+                  ariaLabel="Service branch"
+                >
+                  {BRANCH_OPTIONS.map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {b.label}
+                    </option>
+                  ))}
+                </SelectRow>
 
-                {basePayNow !== null ? (
-                  <p className="text-xs text-gray-600">
-                    Base pay now:{" "}
-                    <Explain
-                      title={`Looked up in the ${basepay.year ?? 2026} DFAS pay table for ${grade} at ${yosNow} years of service. This is the number your TSP percentage and the BRS match multiply.`}
-                      className="font-semibold"
-                    >
-                      {`${fmtUSD0(basePayNow)}/mo (${grade} @ ${yosNow} YOS)`}
-                    </Explain>
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-700">
+                <SelectRow
+                  label="Track"
+                  value={track}
+                  onChange={(v) => {
+                    const t = v as Track;
+                    setTrack(t);
+                    setGrade(t === "officer" ? "O-1" : "E-4");
+                  }}
+                  ariaLabel="Enlisted or officer"
+                >
+                  <option value="enlisted">Enlisted</option>
+                  <option value="officer">Officer</option>
+                </SelectRow>
+
+                <SelectRow
+                  label="Pay grade"
+                  value={grade}
+                  onChange={(v) => setGrade(v)}
+                  ariaLabel="Current pay grade"
+                >
+                  {(track === "officer" ? OFFICER_GRADES : ENLISTED_GRADES).map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </SelectRow>
+
+                <FieldRow
+                  label="Years of service"
+                  tip={TIMING_BASIS[track]}
+                  control={
+                    <UnitInput
+                      value={yosNow}
+                      onChange={(v) => setYosNow(Math.max(0, Math.min(40, num(v))))}
+                      suffix="YOS"
+                      width="w-12"
+                      min={0}
+                      max={40}
+                      ariaLabel="Current years of service"
+                    />
+                  }
+                />
+
+                <FieldRow
+                  label="Annual pay raise"
+                  control={
+                    <UnitInput
+                      value={payRaisePct}
+                      onChange={(v) => setPayRaisePct(Math.max(0, Math.min(8, num(v))))}
+                      suffix="%/yr"
+                      width="w-12"
+                      min={0}
+                      max={8}
+                      step={0.1}
+                      ariaLabel="Assumed annual military pay raise percent"
+                      title="Congress adjusts the pay tables most years. This escalates the whole table annually on top of promotion and YOS raises (recent raises have ranged roughly 2-5%)."
+                    />
+                  }
+                />
+
+                {basePayNow === null && (
+                  <FieldNote tone="warn">
                     DFAS publishes no {grade} rate at {yosNow} YOS — adjust YOS or grade.
-                  </p>
+                  </FieldNote>
                 )}
 
-                <label className="flex items-center gap-2 text-xs text-gray-600">
+                <label className="flex items-center gap-2 pt-0.5 text-sm text-gray-600">
                   <input
                     type="checkbox"
                     checked={modelPromotions}
@@ -1594,7 +1624,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     {promotionsPreview.map((p) => (
                       <span
                         key={p.toGrade}
-                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                        className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
                         style={{ backgroundColor: gradeColor(p.toGrade) }}
                         title={
                           p.behindSchedule
@@ -1609,15 +1639,15 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                         {p.competitive ? "*" : ""}
                       </span>
                     ))}
-                    <span className="self-center text-[10px] text-gray-400">
+                    <span className="self-center text-xs text-gray-400">
                       * board-driven, not guaranteed
                     </span>
                   </div>
                 )}
                 {modelPromotions && promotionsPreview.length === 0 && serviceYears > 0 && (
-                  <p className="text-[11px] text-gray-400">
+                  <FieldNote tone="faint">
                     No typical promotions fall inside this service window.
-                  </p>
+                  </FieldNote>
                 )}
 
                 {modelPromotions && (
@@ -1626,14 +1656,14 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                       How promotions are modelled
                     </summary>
                     <div className="mt-2 space-y-2 rounded-2xl border p-3">
-                      <p className="text-[11px] leading-4 text-gray-600">{TIMING_BASIS[track]}</p>
+                      <p className="text-xs leading-5 text-gray-600">{TIMING_BASIS[track]}</p>
                       <ul className="space-y-1.5">
                         {ladder.map((s) => (
                           <li key={s.toGrade} className={`text-xs ${LADDER_STATUS_TEXT[s.status]}`}>
                             <span className="flex flex-wrap items-center gap-1.5">
                               <span className="font-semibold">{s.toGrade}</span>
                               <span>{tisPointLabel(s.tisMonths)}</span>
-                              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">
                                 {s.competitive ? "board" : "automatic"}
                               </span>
                               <span className="font-medium">
@@ -1647,15 +1677,15 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                               </span>
                             </span>
                             {s.note && (
-                              <span className="mt-0.5 block text-[11px] leading-4 text-gray-400">
+                              <span className="mt-0.5 block text-xs leading-5 text-gray-400">
                                 {s.note}
                               </span>
                             )}
                           </li>
                         ))}
                       </ul>
-                      <p className="text-[11px] leading-4 text-gray-500">{TIMING_DISCLAIMER}</p>
-                      <p className="text-[11px] leading-4 text-gray-400">
+                      <p className="text-xs leading-5 text-gray-500">{TIMING_DISCLAIMER}</p>
+                      <p className="text-xs leading-5 text-gray-400">
                         {"Schedule source: "}
                         <a
                           href={BRANCHES[branch].source.url}
@@ -1669,23 +1699,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     </div>
                   </details>
                 )}
-
-                <div className="flex items-center gap-2 pt-1 text-xs text-gray-600">
-                  <span>Assumed annual military pay raise</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={8}
-                    step={0.1}
-                    value={payRaisePct}
-                    onChange={(e) => setPayRaisePct(Math.max(0, Math.min(8, num(e.target.value))))}
-                    className={pctInput}
-                    aria-label="Assumed annual military pay raise percent"
-                    title="Congress adjusts the pay tables most years. This escalates the whole table annually on top of promotion and YOS raises (recent raises have ranged roughly 2-5%)."
-                  />
-                  <span>%/yr</span>
-                </div>
-              </div>
+              </FieldList>
             </div>
 
             {/* Budget → contributions hand-off */}
@@ -1702,33 +1716,35 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     to assign any category or income row.
                   </p>
                 ) : (
-                  <div className="mt-3 space-y-1.5">
+                  <div className="mt-3 space-y-2">
                     {visibleCandidates.map((c) => (
                       <div key={c.id} className="flex items-center gap-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate" title={c.label}>
+                        <span className="min-w-0 flex-1 truncate text-gray-600" title={c.label}>
                           {c.label}
                           {c.kind === "leftover" && (
-                            <span className="ml-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                            <span className="ml-1 rounded-full bg-white px-1.5 py-0.5 text-xs font-medium text-gray-500">
                               income − expenses
                             </span>
                           )}
                         </span>
-                        <span className="shrink-0 text-gray-600">{fmtUSD0(c.monthly)}/mo</span>
-                        <select
+                        <span className="shrink-0 whitespace-nowrap text-gray-600">
+                          {fmtUSD0(c.monthly)}/mo
+                        </span>
+                        <FieldSelect
                           value={destinationOf(c.id, c.suggested)}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             setAssignments((prev) => ({
                               ...prev,
-                              [c.id]: e.target.value as ContributionDestination,
+                              [c.id]: v as ContributionDestination,
                             }))
                           }
-                          className="field shrink-0 rounded-lg px-2 py-1 text-xs"
-                          aria-label={`Where ${c.label} goes in the projection`}
+                          className="shrink-0"
+                          ariaLabel={`Where ${c.label} goes in the projection`}
                         >
                           <option value="savings">→ Savings</option>
                           <option value="invest">→ Investments</option>
                           <option value="skip">Skip</option>
-                        </select>
+                        </FieldSelect>
                       </div>
                     ))}
                   </div>
@@ -1738,7 +1754,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   <button
                     type="button"
                     onClick={applyBudgetAssignments}
-                    className="rounded-full border border-black bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                    className="whitespace-nowrap rounded-full border border-black bg-black px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
                   >
                     Apply {fmtUSD0(assignedTotals.savingsMonthly)} + {fmtUSD0(assignedTotals.investMonthly)}
                     /mo
@@ -1776,73 +1792,86 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </span>
               </div>
               {(prefill.tspPct || prefill.fundAlloc) && (
-                <p className="mt-1 text-[11px] text-gray-400">
+                <p className="mt-1 text-xs text-gray-400">
                   Pre-filled from your saved budget — edit anything.
                 </p>
               )}
               <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Balance today</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={500}
-                      value={tspBalance === 0 ? "" : tspBalance}
-                      placeholder="0"
-                      onChange={(e) => setTspBalance(Math.max(0, num(e.target.value)))}
-                      className="w-24 bg-transparent text-right outline-none"
-                      aria-label="Current TSP balance"
-                    />
-                  </div>
-                  <span className="text-gray-600">· contributing</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={Math.round(contribPct * 100)}
-                    onChange={(e) =>
-                      setContribPct(Math.max(0, Math.min(100, num(e.target.value))) / 100)
+                <FieldList className="mt-0">
+                  <FieldRow
+                    label="Balance today"
+                    control={
+                      <UnitInput
+                        value={tspBalance === 0 ? "" : tspBalance}
+                        onChange={(v) => setTspBalance(Math.max(0, num(v)))}
+                        prefix="$"
+                        width="w-24"
+                        min={0}
+                        step={500}
+                        placeholder="0"
+                        ariaLabel="Current TSP balance"
+                      />
                     }
-                    className={pctInput}
-                    aria-label="TSP contribution percent of base pay"
-                    title={`TSP contributions are a percent of base pay only — not BAH or BAS. 5% collects the full BRS match. ${TSP_MAX_EARLY_WARNING}`}
                   />
-                  <span className="text-gray-600">% of base pay</span>
-                </div>
-                <p className="text-[11px] text-gray-400">{TSP_LIMIT_HINT}</p>
-                <label className="flex items-center gap-2 text-xs text-gray-600">
-                  <input type="checkbox" checked={brs} onChange={(e) => setBrs(e.target.checked)} />
-                  BRS agency contributions (1% automatic + up to 4% match)
-                </label>
-                <p className="text-xs text-gray-500">
-                  Right now:{" "}
-                  <Explain
-                    title={`Your ${Math.round(contribPct * 100)}% of ${fmtUSD0(
-                      basePayNow ?? 0
-                    )} base pay, capped at the ${fmtUSD0(
-                      TSP_ELECTIVE_DEFERRAL_LIMIT_2026
-                    )} annual elective-deferral limit.`}
-                  >
-                    {`you ${fmtUSD0(employeeNow)}/mo`}
-                  </Explain>
-                  {brs && (
-                    <>
-                      {" · "}
-                      <Explain title="BRS agency money: 1% of base pay automatic, plus a match of 100% on your first 3% and 50% on your next 2% — worth 5% total when you contribute at least 5%.">
-                        {`agency ${fmtUSD0(agencyNow)}/mo`}
-                      </Explain>
-                    </>
-                  )}
-                  {brs && contribPct < 0.05 && (
-                    <span className="text-amber-700">
-                      {" · contribute 5% to collect the full match"}
-                    </span>
-                  )}
-                  {" — these grow as your pay grows (see Pay & Rank tab)."}
-                </p>
+
+                  <FieldRow
+                    label="Contributing"
+                    control={
+                      <UnitInput
+                        value={Math.round(contribPct * 100)}
+                        onChange={(v) =>
+                          setContribPct(Math.max(0, Math.min(100, num(v))) / 100)
+                        }
+                        suffix="% of base pay"
+                        width="w-10"
+                        min={0}
+                        max={100}
+                        step={1}
+                        ariaLabel="TSP contribution percent of base pay"
+                        title={`TSP contributions are a percent of base pay only — not BAH or BAS. 5% collects the full BRS match. ${TSP_MAX_EARLY_WARNING}`}
+                      />
+                    }
+                    hint={
+                      <>
+                        {"Right now: "}
+                        <Explain
+                          title={`Your ${Math.round(contribPct * 100)}% of ${fmtUSD0(
+                            basePayNow ?? 0
+                          )} base pay, capped at the ${fmtUSD0(
+                            TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                          )} annual elective-deferral limit.`}
+                        >
+                          {`you ${fmtUSD0(employeeNow)}/mo`}
+                        </Explain>
+                        {brs && (
+                          <>
+                            {" · "}
+                            <Explain title="BRS agency money: 1% of base pay automatic, plus a match of 100% on your first 3% and 50% on your next 2% — worth 5% total when you contribute at least 5%.">
+                              {`agency ${fmtUSD0(agencyNow)}/mo`}
+                            </Explain>
+                          </>
+                        )}
+                        {brs && contribPct < 0.05 && (
+                          <span className="text-amber-700">
+                            {" · contribute 5% to collect the full match"}
+                          </span>
+                        )}
+                        {" — these grow as your pay grows (see Pay & Rank tab)."}
+                      </>
+                    }
+                  />
+
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={brs}
+                      onChange={(e) => setBrs(e.target.checked)}
+                    />
+                    BRS agency contributions (1% automatic + up to 4% match)
+                  </label>
+                </FieldList>
+
+                <FieldNote tone="faint">{TSP_LIMIT_HINT}</FieldNote>
 
                 <TspResetCalculator
                   monthlyBasePay={basePayNow ?? 0}
@@ -1855,52 +1884,57 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     {`Returns & fees — blended ≈ ${(tspReturn * 100).toFixed(1)}%/yr net`}
                   </summary>
                   <div className="mt-2 space-y-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-gray-600">Assumed returns</span>
-                  <select
+                <FieldList className="mt-0">
+                  <SelectRow
+                    label="Assumed returns"
                     value={preset}
-                    onChange={(e) => setPreset(e.target.value as ReturnPreset)}
-                    className="field rounded-lg px-2 py-1 text-xs"
-                    aria-label="Return assumption preset"
+                    onChange={(v) => setPreset(v as ReturnPreset)}
+                    ariaLabel="Return assumption preset"
+                    hint={
+                      <Explain
+                        title={`Your fund mix's weighted-average assumed annual return (${(
+                          tspReturnGross * 100
+                        ).toFixed(1)}%) minus the ${tspFeePct}% expense ratio. The TSP balance compounds at this net rate.`}
+                        className="font-medium text-gray-700"
+                      >
+                        {`Blended ≈ ${(tspReturn * 100).toFixed(1)}%/yr net of fees`}
+                      </Explain>
+                    }
                   >
                     <option value="longRun">Long run (since 1987–88)</option>
                     <option value="tenYear">Last 10 years (2016–2025)</option>
                     <option value="custom">Custom</option>
-                  </select>
-                  <Explain
-                    title={`Your fund mix's weighted-average assumed annual return (${(
-                      tspReturnGross * 100
-                    ).toFixed(1)}%) minus the ${tspFeePct}% expense ratio. The TSP balance compounds at this net rate.`}
-                    className="font-medium text-gray-700"
-                  >
-                    {`blended ≈ ${(tspReturn * 100).toFixed(1)}%/yr net of fees`}
-                  </Explain>
-                </div>
+                  </SelectRow>
 
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-gray-600">TSP expense ratio</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={2}
-                    step={0.01}
-                    value={tspFeePct}
-                    onChange={(e) => setTspFeePct(Math.max(0, Math.min(2, num(e.target.value))))}
-                    className={pctInput}
-                    aria-label="TSP expense ratio percent per year"
-                    title="The TSP's all-in fund cost, deducted from share prices automatically. Recent totals run about 0.04–0.08%/yr depending on the fund."
+                  <FieldRow
+                    label="TSP expense ratio"
+                    control={
+                      <UnitInput
+                        value={tspFeePct}
+                        onChange={(v) => setTspFeePct(Math.max(0, Math.min(2, num(v))))}
+                        suffix="%/yr"
+                        width="w-12"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        ariaLabel="TSP expense ratio percent per year"
+                        title="The TSP's all-in fund cost, deducted from share prices automatically. Recent totals run about 0.04–0.08%/yr depending on the fund."
+                      />
+                    }
+                    hint={
+                      <>
+                        {`≈ $${(tspFeePct * 10).toFixed(2)} per $1,000/yr. `}
+                        <button
+                          type="button"
+                          onClick={() => setShowTspFees((s) => !s)}
+                          className="font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
+                        >
+                          {showTspFees ? "Hide" : "What does this fee actually pay for?"}
+                        </button>
+                      </>
+                    }
                   />
-                  <span className="text-gray-600">
-                    %/yr ≈ ${(tspFeePct * 10).toFixed(2)} per $1,000/yr
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowTspFees((s) => !s)}
-                    className="font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
-                  >
-                    {showTspFees ? "Hide" : "What does this fee actually pay for?"}
-                  </button>
-                </div>
+                </FieldList>
                 {showTspFees && (
                   <div className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
                     <div className="font-semibold text-gray-800">
@@ -1923,58 +1957,65 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   {" fund mix & returns"}
                 </button>
                 {showTspDetail && (
-                  <div className="space-y-1.5 pt-1">
+                  <div className="space-y-2 pt-1">
                     {TSP_FUNDS.map((f) => (
-                      <div key={f.key} className="flex items-center gap-2 text-xs">
-                        <span
-                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: f.color }}
-                        />
-                        <span className="w-12 font-medium">{f.name}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={5}
-                          value={alloc[f.key] || 0}
-                          onChange={(e) =>
-                            setAlloc((prev) => ({
-                              ...prev,
-                              [f.key]: Math.max(0, Math.min(100, num(e.target.value))),
-                            }))
-                          }
-                          className={pctInput}
-                          aria-label={`${f.name} allocation percent`}
-                        />
-                        <span className="text-gray-500">% ·</span>
-                        {preset === "custom" ? (
-                          <input
-                            type="number"
-                            min={-20}
-                            max={30}
-                            step={0.1}
-                            value={customReturns[f.key]}
-                            onChange={(e) =>
-                              setCustomReturns((prev) => ({
-                                ...prev,
-                                [f.key]: num(e.target.value),
-                              }))
-                            }
-                            className={pctInput}
-                            aria-label={`${f.name} assumed annual return percent`}
-                          />
-                        ) : (
-                          <span className="w-16 text-right font-medium">
-                            {(fundReturns[f.key] * 100).toFixed(1)}
+                      <FieldRow
+                        key={f.key}
+                        label={
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: f.color }}
+                            />
+                            <span className="font-medium">{f.name}</span>
                           </span>
-                        )}
-                        <span className="text-gray-500">%/yr</span>
-                      </div>
+                        }
+                        control={
+                          <>
+                            <UnitInput
+                              value={alloc[f.key] || 0}
+                              onChange={(v) =>
+                                setAlloc((prev) => ({
+                                  ...prev,
+                                  [f.key]: Math.max(0, Math.min(100, num(v))),
+                                }))
+                              }
+                              suffix="%"
+                              width="w-10"
+                              min={0}
+                              max={100}
+                              step={5}
+                              ariaLabel={`${f.name} allocation percent`}
+                            />
+                            {preset === "custom" ? (
+                              <UnitInput
+                                value={customReturns[f.key]}
+                                onChange={(v) =>
+                                  setCustomReturns((prev) => ({
+                                    ...prev,
+                                    [f.key]: num(v),
+                                  }))
+                                }
+                                suffix="%/yr"
+                                width="w-12"
+                                min={-20}
+                                max={30}
+                                step={0.1}
+                                ariaLabel={`${f.name} assumed annual return percent`}
+                              />
+                            ) : (
+                              <span className="whitespace-nowrap text-sm font-medium text-gray-500">
+                                {`${(fundReturns[f.key] * 100).toFixed(1)}%/yr`}
+                              </span>
+                            )}
+                          </>
+                        }
+                      />
                     ))}
                     {allocTotal !== 100 && (
-                      <p className="text-xs text-amber-600">
+                      <FieldNote tone="warn">
                         Mix totals {allocTotal}% — weights are normalized, but aim for 100%.
-                      </p>
+                      </FieldNote>
                     )}
                   </div>
                 )}
@@ -2024,128 +2065,152 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </p>
               )}
               {iraOn && prefill.iraMonthly && (
-                <p className="mt-1 text-[11px] text-gray-400">
+                <p className="mt-1 text-xs text-gray-400">
                   Pre-filled from your saved budget&apos;s IRA — edit anything.
                 </p>
               )}
               {iraOn && (
               <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Balance</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={500}
-                      value={iraBalance === 0 ? "" : iraBalance}
-                      placeholder="0"
-                      onChange={(e) => setIraBalance(Math.max(0, num(e.target.value)))}
-                      className="w-24 bg-transparent text-right outline-none"
-                      aria-label="Current IRA balance"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>Adding</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={25}
-                      value={iraMonthly === 0 ? "" : iraMonthly}
-                      placeholder="0"
-                      onChange={(e) => setIraMonthly(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly IRA contribution while serving"
-                    />
-                  </div>
-                  <span>/mo while serving</span>
-                  <button
-                    type="button"
-                    onClick={() => setIraMonthly(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
-                    className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                    title={`Set the while-serving contribution to the pace that reaches the ${fmtUSD0(
-                      IRA_CONTRIBUTION_LIMIT_2026
-                    )} 2026 IRA annual limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
-                  >
-                    Max
-                  </button>
-                  <span>·</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={25}
-                      value={iraMonthlyAfter === 0 ? "" : iraMonthlyAfter}
-                      placeholder="0"
-                      onChange={(e) => setIraMonthlyAfter(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly IRA contribution after service"
-                    />
-                  </div>
-                  <span>/mo after, until age</span>
-                  <input
-                    type="number"
-                    min={currentAge}
-                    max={90}
-                    value={iraUntilAge}
-                    onChange={(e) => setIraUntilAge(Math.max(currentAge, Math.min(90, num(e.target.value, 65))))}
-                    className={pctInput}
-                    aria-label="Keep contributing to the IRA until this age"
-                    title="Contributions stop at this age; the balance keeps compounding to your projection horizon."
+                <FieldList className="mt-0">
+                  <FieldRow
+                    label="Balance today"
+                    control={
+                      <UnitInput
+                        value={iraBalance === 0 ? "" : iraBalance}
+                        onChange={(v) => setIraBalance(Math.max(0, num(v)))}
+                        prefix="$"
+                        width="w-24"
+                        min={0}
+                        step={500}
+                        placeholder="0"
+                        ariaLabel="Current IRA balance"
+                      />
+                    }
                   />
-                  <button
-                    type="button"
-                    onClick={() => setIraMonthlyAfter(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
-                    className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
-                    title={`Set the after-service contribution to the pace that reaches the ${fmtUSD0(
-                      IRA_CONTRIBUTION_LIMIT_2026
-                    )} 2026 IRA annual limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
-                  >
-                    Max
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-400">{IRA_LIMIT_HINT}</p>
+
+                  <FieldRow
+                    label="Adding while serving"
+                    control={
+                      <>
+                        <UnitInput
+                          value={iraMonthly === 0 ? "" : iraMonthly}
+                          onChange={(v) => setIraMonthly(Math.max(0, num(v)))}
+                          prefix="$"
+                          suffix="/mo"
+                          width="w-14"
+                          min={0}
+                          step={25}
+                          placeholder="0"
+                          ariaLabel="Monthly IRA contribution while serving"
+                        />
+                        <MiniButton
+                          onClick={() => setIraMonthly(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
+                          title={`Set the while-serving contribution to the pace that reaches the ${fmtUSD0(
+                            IRA_CONTRIBUTION_LIMIT_2026
+                          )} 2026 IRA annual limit (${fmtUSD0(
+                            IRA_CONTRIBUTION_LIMIT_2026 / 12
+                          )}/mo).`}
+                        >
+                          Max
+                        </MiniButton>
+                      </>
+                    }
+                  />
+
+                  <FieldRow
+                    label="Adding after service"
+                    control={
+                      <>
+                        <UnitInput
+                          value={iraMonthlyAfter === 0 ? "" : iraMonthlyAfter}
+                          onChange={(v) => setIraMonthlyAfter(Math.max(0, num(v)))}
+                          prefix="$"
+                          suffix="/mo"
+                          width="w-14"
+                          min={0}
+                          step={25}
+                          placeholder="0"
+                          ariaLabel="Monthly IRA contribution after service"
+                        />
+                        <MiniButton
+                          onClick={() => setIraMonthlyAfter(IRA_CONTRIBUTION_LIMIT_2026 / 12)}
+                          title={`Set the after-service contribution to the pace that reaches the ${fmtUSD0(
+                            IRA_CONTRIBUTION_LIMIT_2026
+                          )} 2026 IRA annual limit (${fmtUSD0(
+                            IRA_CONTRIBUTION_LIMIT_2026 / 12
+                          )}/mo).`}
+                        >
+                          Max
+                        </MiniButton>
+                      </>
+                    }
+                  />
+
+                  <FieldRow
+                    label="Contributing until age"
+                    control={
+                      <UnitInput
+                        value={iraUntilAge}
+                        onChange={(v) =>
+                          setIraUntilAge(Math.max(currentAge, Math.min(90, num(v, 65))))
+                        }
+                        suffix="yrs old"
+                        width="w-12"
+                        min={currentAge}
+                        max={90}
+                        ariaLabel="Keep contributing to the IRA until this age"
+                        title="Contributions stop at this age; the balance keeps compounding to your projection horizon."
+                      />
+                    }
+                  />
+                </FieldList>
+
+                <FieldNote tone="faint">{IRA_LIMIT_HINT}</FieldNote>
                 {iraMonthly * 12 > IRA_CONTRIBUTION_LIMIT_2026 && (
-                  <p className="text-xs text-amber-700">
-                    Capped at the {fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026)} annual IRS limit (
-                    {fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).
-                  </p>
+                  <FieldNote tone="warn">
+                    {`Capped at the ${fmtUSD0(
+                      IRA_CONTRIBUTION_LIMIT_2026
+                    )} annual IRS limit (${fmtUSD0(IRA_CONTRIBUTION_LIMIT_2026 / 12)}/mo).`}
+                  </FieldNote>
                 )}
                 <details>
                   <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
                     {`Returns & fees — ${iraReturnNetPct.toFixed(2)}%/yr net of fees`}
                   </summary>
                   <div className="mt-2 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                      <span>Assumed return</span>
-                      <input
-                        type="number"
-                        min={-20}
-                        max={30}
-                        step={0.5}
-                        value={iraReturnPct}
-                        onChange={(e) => setIraReturnPct(num(e.target.value))}
-                        className={pctInput}
-                        aria-label="Assumed IRA annual return percent, before fees"
+                    <FieldList className="mt-0">
+                      <FieldRow
+                        label="Assumed return"
+                        control={
+                          <UnitInput
+                            value={iraReturnPct}
+                            onChange={(v) => setIraReturnPct(num(v))}
+                            suffix="%/yr"
+                            width="w-12"
+                            min={-20}
+                            max={30}
+                            step={0.5}
+                            ariaLabel="Assumed IRA annual return percent, before fees"
+                          />
+                        }
                       />
-                      <span>%/yr, minus</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={iraFeePct}
-                        onChange={(e) => setIraFeePct(Math.max(0, Math.min(2, num(e.target.value))))}
-                        className={pctInput}
-                        aria-label="IRA expense ratio / advisory fee percent per year"
-                        title="Fund expense ratio plus any advisory fee. Broad index funds at the big firms run ≈0.02–0.10%; robo/advisory services add ≈0.25–0.35%."
+                      <FieldRow
+                        label="Fees"
+                        control={
+                          <UnitInput
+                            value={iraFeePct}
+                            onChange={(v) => setIraFeePct(Math.max(0, Math.min(2, num(v))))}
+                            suffix="%/yr"
+                            width="w-12"
+                            min={0}
+                            max={2}
+                            step={0.01}
+                            ariaLabel="IRA expense ratio / advisory fee percent per year"
+                            title="Fund expense ratio plus any advisory fee. Broad index funds at the big firms run ≈0.02–0.10%; robo/advisory services add ≈0.25–0.35%."
+                          />
+                        }
                       />
-                      <span>% fees</span>
-                    </div>
+                    </FieldList>
                     <div className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
                       <ul className="list-disc space-y-1.5 pl-4">
                         {IRA_PROVIDER_CONTEXT.map((pvd) => (
@@ -2195,67 +2260,73 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </p>
               )}
               {invOn && (
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Balance</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
+              <FieldList>
+                <FieldRow
+                  label="Balance today"
+                  control={
+                    <UnitInput
+                      value={invBalance === 0 ? "" : invBalance}
+                      onChange={(v) => setInvBalance(Math.max(0, num(v)))}
+                      prefix="$"
+                      width="w-24"
                       min={0}
                       step={500}
-                      value={invBalance === 0 ? "" : invBalance}
                       placeholder="0"
-                      onChange={(e) => setInvBalance(Math.max(0, num(e.target.value)))}
-                      className="w-24 bg-transparent text-right outline-none"
-                      aria-label="Current investment balance"
+                      ariaLabel="Current investment balance"
                     />
-                  </div>
-                  <span className="text-gray-600">at</span>
-                  <input
-                    type="number"
-                    min={-20}
-                    max={30}
-                    step={0.5}
-                    value={invReturnPct}
-                    onChange={(e) => setInvReturnPct(num(e.target.value))}
-                    className={pctInput}
-                    aria-label="Assumed investment annual return percent"
-                  />
-                  <span className="text-gray-600">%/yr</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>Adding</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={25}
+                  }
+                />
+
+                <FieldRow
+                  label="Assumed return"
+                  control={
+                    <UnitInput
+                      value={invReturnPct}
+                      onChange={(v) => setInvReturnPct(num(v))}
+                      suffix="%/yr"
+                      width="w-12"
+                      min={-20}
+                      max={30}
+                      step={0.5}
+                      ariaLabel="Assumed investment annual return percent"
+                    />
+                  }
+                />
+
+                <FieldRow
+                  label="Adding while serving"
+                  control={
+                    <UnitInput
                       value={invMonthly === 0 ? "" : invMonthly}
-                      placeholder="0"
-                      onChange={(e) => setInvMonthly(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly investment contribution while serving"
-                    />
-                  </div>
-                  <span>/mo while serving ·</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
+                      onChange={(v) => setInvMonthly(Math.max(0, num(v)))}
+                      prefix="$"
+                      suffix="/mo"
+                      width="w-14"
                       min={0}
                       step={25}
-                      value={invMonthlyAfter === 0 ? "" : invMonthlyAfter}
                       placeholder="0"
-                      onChange={(e) => setInvMonthlyAfter(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly investment contribution after service"
+                      ariaLabel="Monthly investment contribution while serving"
                     />
-                  </div>
-                  <span>/mo after service</span>
-                </div>
-              </div>
+                  }
+                />
+
+                <FieldRow
+                  label="Adding after service"
+                  control={
+                    <UnitInput
+                      value={invMonthlyAfter === 0 ? "" : invMonthlyAfter}
+                      onChange={(v) => setInvMonthlyAfter(Math.max(0, num(v)))}
+                      prefix="$"
+                      suffix="/mo"
+                      width="w-14"
+                      min={0}
+                      step={25}
+                      placeholder="0"
+                      ariaLabel="Monthly investment contribution after service"
+                    />
+                  }
+                />
+              </FieldList>
               )}
             </div>
 
@@ -2288,67 +2359,73 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </p>
               )}
               {savOn && (
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Balance</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
+              <FieldList>
+                <FieldRow
+                  label="Balance today"
+                  control={
+                    <UnitInput
+                      value={savBalance === 0 ? "" : savBalance}
+                      onChange={(v) => setSavBalance(Math.max(0, num(v)))}
+                      prefix="$"
+                      width="w-24"
                       min={0}
                       step={250}
-                      value={savBalance === 0 ? "" : savBalance}
                       placeholder="0"
-                      onChange={(e) => setSavBalance(Math.max(0, num(e.target.value)))}
-                      className="w-24 bg-transparent text-right outline-none"
-                      aria-label="Current savings balance"
+                      ariaLabel="Current savings balance"
                     />
-                  </div>
-                  <span className="text-gray-600">at</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={15}
-                    step={0.1}
-                    value={savApyPct}
-                    onChange={(e) => setSavApyPct(Math.max(0, num(e.target.value)))}
-                    className={pctInput}
-                    aria-label="Savings APY percent"
-                  />
-                  <span className="text-gray-600">% APY</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>Adding</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
+                  }
+                />
+
+                <FieldRow
+                  label="Rate"
+                  control={
+                    <UnitInput
+                      value={savApyPct}
+                      onChange={(v) => setSavApyPct(Math.max(0, num(v)))}
+                      suffix="% APY"
+                      width="w-12"
                       min={0}
-                      step={25}
+                      max={15}
+                      step={0.1}
+                      ariaLabel="Savings APY percent"
+                    />
+                  }
+                />
+
+                <FieldRow
+                  label="Adding while serving"
+                  control={
+                    <UnitInput
                       value={savMonthly === 0 ? "" : savMonthly}
-                      placeholder="0"
-                      onChange={(e) => setSavMonthly(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly savings contribution while serving"
-                    />
-                  </div>
-                  <span>/mo while serving ·</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
+                      onChange={(v) => setSavMonthly(Math.max(0, num(v)))}
+                      prefix="$"
+                      suffix="/mo"
+                      width="w-14"
                       min={0}
                       step={25}
-                      value={savMonthlyAfter === 0 ? "" : savMonthlyAfter}
                       placeholder="0"
-                      onChange={(e) => setSavMonthlyAfter(Math.max(0, num(e.target.value)))}
-                      className="w-16 bg-transparent text-right outline-none"
-                      aria-label="Monthly savings contribution after service"
+                      ariaLabel="Monthly savings contribution while serving"
                     />
-                  </div>
-                  <span>/mo after service</span>
-                </div>
-              </div>
+                  }
+                />
+
+                <FieldRow
+                  label="Adding after service"
+                  control={
+                    <UnitInput
+                      value={savMonthlyAfter === 0 ? "" : savMonthlyAfter}
+                      onChange={(v) => setSavMonthlyAfter(Math.max(0, num(v)))}
+                      prefix="$"
+                      suffix="/mo"
+                      width="w-14"
+                      min={0}
+                      step={25}
+                      placeholder="0"
+                      ariaLabel="Monthly savings contribution after service"
+                    />
+                  }
+                />
+              </FieldList>
               )}
             </div>
               </div>
@@ -2393,123 +2470,143 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
               )}
               {k401On && (
               <div className="mt-3 space-y-2 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-gray-600">Expecting</span>
-                  <div className="field flex items-center rounded-lg px-2 py-1">
-                    <span className="text-gray-500">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={5000}
-                      value={civSalary === 0 ? "" : civSalary}
-                      placeholder={String(DEFAULT_CIVILIAN_SALARY)}
-                      onChange={(e) => setCivSalary(Math.max(0, num(e.target.value)))}
-                      className="w-24 bg-transparent text-right outline-none"
-                      aria-label="Expected civilian salary per year after service"
-                    />
-                  </div>
-                  <span className="text-gray-600">
-                    /yr after service
-                    {civSalary > 0 ? ` (≈ ${fmtUSD0(civSalary / 12)}/mo)` : ""}
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-400">
-                  {`Assumes ${fmtUSD0(
-                    DEFAULT_CIVILIAN_SALARY
-                  )} to start — change it to your own expected salary.`}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                  <span>401(k):</span>
-                  <select
+                <FieldList className="mt-0">
+                  <FieldRow
+                    label="Salary after service"
+                    control={
+                      <UnitInput
+                        value={civSalary === 0 ? "" : civSalary}
+                        onChange={(v) => setCivSalary(Math.max(0, num(v)))}
+                        prefix="$"
+                        suffix="/yr"
+                        width="w-20"
+                        min={0}
+                        step={5000}
+                        placeholder={String(DEFAULT_CIVILIAN_SALARY)}
+                        ariaLabel="Expected civilian salary per year after service"
+                      />
+                    }
+                    hint={
+                      civSalary > 0
+                        ? `≈ ${fmtUSD0(civSalary / 12)}/mo.`
+                        : `Assumes ${fmtUSD0(
+                            DEFAULT_CIVILIAN_SALARY
+                          )} to start — change it to your own expected salary.`
+                    }
+                  />
+
+                  <SelectRow
+                    label="401(k) type"
+                    tip={
+                      "Traditional: pre-tax now, taxed at withdrawal.\nRoth: taxed now, tax-free later.\n\nThe balance projected here is the same either way — what differs is the tax bill at withdrawal. The Roth vs Traditional card in the Trade space tab shows that comparison.\n\nEmployer match dollars are always pre-tax (Traditional), whatever you pick."
+                    }
                     value={k401Type}
-                    onChange={(e) => setK401Type(e.target.value as "traditional" | "roth")}
-                    className="field rounded-lg px-2 py-1 text-xs"
-                    aria-label="Civilian 401(k) tax type"
+                    onChange={(v) => setK401Type(v as "traditional" | "roth")}
+                    ariaLabel="Civilian 401(k) tax type"
                   >
                     <option value="traditional">Traditional (pre-tax)</option>
                     <option value="roth">Roth (post-tax)</option>
-                  </select>
-                  <InfoDot
-                    text={
-                      "Traditional: pre-tax now, taxed at withdrawal.\nRoth: taxed now, tax-free later.\n\nThe balance projected here is the same either way — what differs is the tax bill at withdrawal. The Roth vs Traditional card in the Trade space tab shows that comparison.\n\nEmployer match dollars are always pre-tax (Traditional), whatever you pick."
+                  </SelectRow>
+
+                  <FieldRow
+                    label="You contribute"
+                    control={
+                      <>
+                        <UnitInput
+                          value={k401Pct}
+                          onChange={(v) => setK401Pct(Math.max(0, Math.min(100, num(v, 6))))}
+                          suffix="% of salary"
+                          width="w-10"
+                          min={0}
+                          max={100}
+                          step={1}
+                          ariaLabel="Your 401(k) contribution percent of salary"
+                        />
+                        <MiniButton
+                          disabled={civSalary <= 0}
+                          onClick={() =>
+                            setK401Pct(
+                              Math.min(
+                                100,
+                                Math.round(
+                                  (TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / civSalary) * 1000
+                                ) / 10
+                              )
+                            )
+                          }
+                          title={`Set your percentage so this salary reaches the ${fmtUSD0(
+                            TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                          )} 2026 annual employee limit — shared with the TSP in the same calendar year, and the employer match doesn't count against it. Set a salary first.`}
+                        >
+                          Max
+                        </MiniButton>
+                      </>
                     }
                   />
-                  <span>you</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={k401Pct}
-                    onChange={(e) => setK401Pct(Math.max(0, Math.min(100, num(e.target.value, 6))))}
-                    className={pctInput}
-                    aria-label="Your 401(k) contribution percent of salary"
-                  />
-                  <span>% + match</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={k401MatchPct}
-                    onChange={(e) => setK401MatchPct(Math.max(0, Math.min(100, num(e.target.value, 4))))}
-                    className={pctInput}
-                    aria-label="Employer 401(k) match percent of salary"
-                    title="Typical employer matches run 3–6% of salary — check the plan's vesting schedule."
-                  />
-                  <span>%</span>
-                  <button
-                    type="button"
-                    disabled={civSalary <= 0}
-                    onClick={() =>
-                      setK401Pct(
-                        Math.min(
-                          100,
-                          Math.round((TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / civSalary) * 1000) / 10
-                        )
-                      )
+
+                  <FieldRow
+                    label="Employer match"
+                    control={
+                      <UnitInput
+                        value={k401MatchPct}
+                        onChange={(v) => setK401MatchPct(Math.max(0, Math.min(100, num(v, 4))))}
+                        suffix="% of salary"
+                        width="w-10"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        ariaLabel="Employer 401(k) match percent of salary"
+                        title="Typical employer matches run 3–6% of salary — check the plan's vesting schedule."
+                      />
                     }
-                    className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={`Set your percentage so this salary reaches the ${fmtUSD0(
-                      TSP_ELECTIVE_DEFERRAL_LIMIT_2026
-                    )} 2026 annual employee limit — shared with the TSP in the same calendar year, and the employer match doesn't count against it. Set a salary first.`}
-                  >
-                    Max
-                  </button>
-                  <span>{`→ ${fmtUSD0(k401Monthly)}/mo, until age`}</span>
-                  <input
-                    type="number"
-                    min={currentAge}
-                    max={90}
-                    value={k401UntilAge}
-                    onChange={(e) => setK401UntilAge(Math.max(currentAge, Math.min(90, num(e.target.value, 65))))}
-                    className={pctInput}
-                    aria-label="Keep contributing to the 401(k) until this age"
+                    hint={`Together ${fmtUSD0(k401Monthly)}/mo into the 401(k), starting the month you separate.`}
                   />
-                  <span>at</span>
-                  <input
-                    type="number"
-                    min={-20}
-                    max={30}
-                    step={0.5}
-                    value={k401ReturnPct}
-                    onChange={(e) => setK401ReturnPct(num(e.target.value))}
-                    className={pctInput}
-                    aria-label="Assumed 401(k) annual return percent"
+
+                  <FieldRow
+                    label="Contributing until age"
+                    control={
+                      <UnitInput
+                        value={k401UntilAge}
+                        onChange={(v) =>
+                          setK401UntilAge(Math.max(currentAge, Math.min(90, num(v, 65))))
+                        }
+                        suffix="yrs old"
+                        width="w-12"
+                        min={currentAge}
+                        max={90}
+                        ariaLabel="Keep contributing to the 401(k) until this age"
+                      />
+                    }
                   />
-                  <span>%/yr</span>
-                </div>
-                <p className="text-[11px] text-gray-400">{K401_LIMIT_HINT}</p>
+
+                  <FieldRow
+                    label="Assumed return"
+                    control={
+                      <UnitInput
+                        value={k401ReturnPct}
+                        onChange={(v) => setK401ReturnPct(num(v))}
+                        suffix="%/yr"
+                        width="w-12"
+                        min={-20}
+                        max={30}
+                        step={0.5}
+                        ariaLabel="Assumed 401(k) annual return percent"
+                      />
+                    }
+                  />
+                </FieldList>
+
+                <FieldNote tone="faint">{K401_LIMIT_HINT}</FieldNote>
                 {civSalary === 0 && (
-                  <p className="text-xs text-gray-500">
+                  <FieldNote>
                     Set an expected salary to model the 401(k) — it starts the month you separate.
-                  </p>
+                  </FieldNote>
                 )}
                 {serviceYears >= projectionYears && k401Monthly > 0 && (
-                  <p className="text-xs text-amber-700">
+                  <FieldNote tone="warn">
                     Your projection ends at separation — extend the horizon (&quot;an age I pick&quot;)
                     to see the civilian career grow.
-                  </p>
+                  </FieldNote>
                 )}
               </div>
               )}

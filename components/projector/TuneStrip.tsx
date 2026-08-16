@@ -136,7 +136,10 @@ export default function TuneStrip({
                 >
                   −
                 </button>
-                <div className="field flex items-center rounded-lg px-2 py-1">
+                {/* Prefix, value and unit live in ONE pill: a unit rendered as a
+                    sibling wraps onto its own line in a narrow cell, stranding
+                    "% of base pay" under its stepper. */}
+                <div className="field flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1">
                   {c.prefix && <span className="text-gray-500">{c.prefix}</span>}
                   <input
                     type="number"
@@ -151,6 +154,7 @@ export default function TuneStrip({
                     } bg-transparent text-right text-sm outline-none disabled:cursor-not-allowed`}
                     aria-label={c.ariaLabel}
                   />
+                  {c.suffix && <span className="text-sm text-gray-500">{c.suffix}</span>}
                 </div>
                 <button
                   type="button"
@@ -161,10 +165,9 @@ export default function TuneStrip({
                 >
                   +
                 </button>
-                {c.suffix && <span className="text-xs text-gray-600">{c.suffix}</span>}
               </div>
               {c.disabled && c.disabledReason && (
-                <p className="mt-1.5 text-[11px] text-gray-400">{c.disabledReason}</p>
+                <p className="mt-1.5 text-xs text-gray-400">{c.disabledReason}</p>
               )}
             </div>
           );

@@ -7,6 +7,23 @@
 import { formatPlain, formatUsd } from "./summary";
 import { projectionOverview } from "./overview";
 import { glossaryFor } from "./glossary";
+import {
+  TRADE_SPACE_INTRO,
+  TRADE_SPACE_TITLE,
+  barColumns,
+  collectAssumptions,
+  collectCaveats,
+  formatAnalysisValue,
+  formatMetric,
+  headlineComparison,
+  inCellBar,
+  projectionAnalysis,
+  severityLabel,
+  severityMark,
+  sourceLabel,
+  tableMax,
+  unitLabel,
+} from "./analysis";
 
 export type ProjectionYearLine = {
   year: number;
@@ -165,6 +182,124 @@ function row(cells: Array<string | number>): string {
   return cells.map(csvCell).join(",");
 }
 
+/**
+ * The comprehensive trade-space analysis as CSV: a labelled section where
+ * every number carries its unit and a plain-English explanation, and the
+ * assumptions and caveats travel WITH the figures rather than in a footnote.
+ * A stay-vs-leave number without its assumptions is worse than useless.
+ */
+function tradeSpaceCsvLines(p: ProjectionExport): string[] {
+  const analysis = projectionAnalysis(p);
+  const lines: string[] = [];
+
+  lines.push("");
+  lines.push(row([TRADE_SPACE_TITLE.toUpperCase(), "", "", "", ""]));
+  lines.push(row([TRADE_SPACE_INTRO]));
+
+  // The one comparison worth leading with, drawn on a shared bar scale so the
+  // two magnitudes can be read against each other at a glance.
+  const head = headlineComparison(analysis);
+  if (head) {
+    lines.push("");
+    lines.push(row([head.title, "Value", "Unit", "Scale", "What it means"]));
+    for (const bar of head.bars) {
+      lines.push(
+        row([
+          bar.label,
+          formatAnalysisValue(bar.value, bar.unit, "plain"),
+          unitLabel(bar.unit),
+          inCellBar(bar.value, head.max),
+          head.note,
+        ])
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push(row(["Section", "Item", "Value", "Unit", "What it means"]));
+  for (const section of analysis.sections) {
+    lines.push(row([section.title, "Verdict", section.headline, "", section.complete ? "" : "Incomplete - an input this section needs was missing."]));
+    for (const metric of section.metrics) {
+      lines.push(
+        row([
+          section.title,
+          metric.label,
+          formatAnalysisValue(metric.value, metric.unit, "plain"),
+          unitLabel(metric.unit),
+          metric.explanation,
+        ])
+      );
+      if (typeof metric.realValue === "number") {
+        lines.push(
+          row([
+            section.title,
+            `${metric.label} (today's dollars)`,
+            formatPlain(metric.realValue),
+            "USD",
+            `The same figure deflated by the ${p.scenario.inflationPct}%/yr inflation assumption.`,
+          ])
+        );
+      }
+    }
+  }
+
+  // Tables keep their own shape: one header row per table, then its rows, plus
+  // a bar column wherever the engine flagged columns as comparable.
+  for (const section of analysis.sections) {
+    for (const table of section.tables) {
+      const bars = table.sharedBarScale ?? barColumns(table);
+      const max = tableMax(table, bars);
+      const barred = bars.length > 0 && max > 0;
+      const barHeading = `Scale: ${bars
+        .map((k) => table.columns.find((c) => c.key === k)?.label ?? k)
+        .join(" | ")} (one shared scale)`;
+      lines.push("");
+      lines.push(row([`${section.title} - ${table.title}`]));
+      lines.push(
+        row([
+          ...table.columns.map((c) => (unitLabel(c.unit) ? `${c.label} (${unitLabel(c.unit)})` : c.label)),
+          ...(barred ? [barHeading] : []),
+        ])
+      );
+      for (const r of table.rows) {
+        lines.push(
+          row([
+            ...table.columns.map((c) => {
+              const v = r[c.key];
+              return typeof v === "number" ? formatAnalysisValue(v, c.unit, "plain") : String(v ?? "");
+            }),
+            // One scale across every barred column: auto-scaling them
+            // independently would make the bars lie about the comparison.
+            ...(barred ? [bars.map((k) => inCellBar(Number(r[k] ?? 0), max, 12)).join(" | ")] : []),
+          ])
+        );
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push(row(["Trade space assumptions", "Value", "Unit", "Where it comes from", "What it means"]));
+  for (const a of collectAssumptions(analysis)) {
+    lines.push(
+      row([
+        a.label,
+        formatAnalysisValue(a.value, a.unit, "plain"),
+        unitLabel(a.unit),
+        sourceLabel(a.source),
+        a.explanation,
+      ])
+    );
+  }
+
+  lines.push("");
+  lines.push(row(["Trade space caveats", "What it is", ""]));
+  for (const c of collectCaveats(analysis)) {
+    lines.push(row([severityLabel(c.severity), c.text]));
+  }
+
+  return lines;
+}
+
 export function generateProjectionCsv(p: ProjectionExport): string {
   const s = p.scenario;
   const lines: string[] = [];
@@ -286,6 +421,10 @@ export function generateProjectionCsv(p: ProjectionExport): string {
     );
   }
 
+  // ---- Comprehensive trade space (still a conclusion, so it stays above
+  // the year-by-year detail) ----
+  lines.push(...tradeSpaceCsvLines(p));
+
   // ---- Year-by-year detail (after the conclusions) ----
   const cols = activeColumns(p);
   lines.push("");
@@ -351,7 +490,110 @@ export function generateProjectionCsv(p: ProjectionExport): string {
   return lines.join("\n") + "\n";
 }
 
+// ------------------------------------------------------------------- JSON ---
+
+/** Stable identifier so a consumer can tell which shape it is reading. */
+export const PROJECTION_JSON_SCHEMA = "activepayos.wealth-projection.v1";
+
+/**
+ * The whole report as structured data — the payload plus the derived summary
+ * and the full trade-space analysis, each figure still carrying its unit and
+ * explanation. Summary-first: the conclusions are keyed above `years`, which
+ * is the bulk detail.
+ */
+export function generateProjectionJson(p: ProjectionExport): string {
+  const analysis = projectionAnalysis(p);
+  return (
+    JSON.stringify(
+      {
+        schema: PROJECTION_JSON_SCHEMA,
+        generatedOn: p.generatedOn,
+        summary: projectionOverview(p),
+        scenario: p.scenario,
+        totals: p.totals,
+        ...(p.pension ? { pension: p.pension } : {}),
+        ...(p.fees ? { fees: p.fees } : {}),
+        ...(p.rothTradeoff ? { rothTradeoff: p.rothTradeoff } : {}),
+        ...(p.longTerm ? { longTerm: p.longTerm } : {}),
+        tradeSpace: analysis,
+        promotions: p.promotions,
+        activeColumns: activeColumns(p),
+        years: p.years,
+        disclaimer:
+          "Planning estimate only. Assumed returns are not guarantees; verify data at tsp.gov and DFAS. Generated by ActivePayOS - activepayos.com",
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
 // -------------------------------------------------------------------- TXT ---
+
+/**
+ * The trade-space analysis as plain text: a headline block (the verdict and
+ * the one comparison that decides it, drawn as bars on a shared scale), then
+ * the supporting detail, then the assumptions and caveats that qualify it.
+ */
+function tradeSpaceTxtLines(p: ProjectionExport, width: number): string[] {
+  const analysis = projectionAnalysis(p);
+  const div = "-".repeat(width);
+  // Analysis labels run longer than the pay-report ones, so this kv keeps a
+  // separating space instead of letting a long label butt against its value.
+  const kv = (label: string, value: string) =>
+    label.length >= 44 ? `${label}  ${value}` : `${label.padEnd(44)}${value}`;
+  const lines: string[] = [];
+
+  lines.push(div);
+  lines.push(TRADE_SPACE_TITLE.toUpperCase());
+  lines.push(TRADE_SPACE_INTRO);
+  lines.push("");
+
+  // Headline block: the verdict of every section, then the bar comparison.
+  for (const section of analysis.sections) {
+    lines.push(`  ${section.title}: ${section.headline}`);
+  }
+  const head = headlineComparison(analysis);
+  if (head) {
+    lines.push("");
+    lines.push(head.title.toUpperCase());
+    const labelWidth = Math.max(...head.bars.map((b) => b.label.length)) + 2;
+    for (const bar of head.bars) {
+      lines.push(
+        `  ${bar.label.padEnd(labelWidth)}${formatUsd(bar.value).padStart(16)}  ${inCellBar(bar.value, head.max)}`
+      );
+    }
+    lines.push(`  - ${head.note}`);
+  }
+
+  // Detail: every metric with what it means.
+  for (const section of analysis.sections) {
+    lines.push("");
+    lines.push(section.title.toUpperCase());
+    if (!section.complete) {
+      lines.push("  (incomplete - an input this section needs was missing; nothing is fabricated)");
+    }
+    for (const metric of section.metrics) {
+      lines.push(kv(metric.label, formatMetric(metric)));
+      lines.push(`  - ${metric.explanation}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("TRADE SPACE ASSUMPTIONS");
+  for (const a of collectAssumptions(analysis)) {
+    lines.push(kv(a.label, `${formatAnalysisValue(a.value, a.unit)}  (${sourceLabel(a.source)})`));
+    lines.push(`  - ${a.explanation}`);
+  }
+
+  lines.push("");
+  lines.push("TRADE SPACE CAVEATS");
+  for (const c of collectCaveats(analysis)) {
+    lines.push(`  ${severityMark(c.severity)} ${c.text}`);
+  }
+
+  return lines;
+}
 
 export function generateProjectionTxt(p: ProjectionExport): string {
   const s = p.scenario;
@@ -443,6 +685,9 @@ export function generateProjectionTxt(p: ProjectionExport): string {
       )
     );
   }
+
+  // ---- Comprehensive trade space (a conclusion, so above the year table) ----
+  lines.push(...tradeSpaceTxtLines(p, w));
 
   // ---- Year-by-year detail (after the conclusions) ----
   const cols = activeColumns(p);

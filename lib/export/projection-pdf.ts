@@ -5,6 +5,17 @@
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { formatUsd } from "./summary";
 import { activeColumns, type ProjectionExport } from "./projection";
+import {
+  TRADE_SPACE_TITLE,
+  collectAssumptions,
+  collectCaveats,
+  formatAnalysisValue,
+  formatMetric,
+  headlineComparison,
+  projectionAnalysis,
+  severityLabel,
+  sourceLabel,
+} from "./analysis";
 
 const PAGE_W = 612; // US Letter
 const PAGE_H = 792;
@@ -35,6 +46,28 @@ function rightText(
   page.drawText(text, { x: rx - font.widthOfTextAtSize(text, size), y, size, font, color });
 }
 
+/**
+ * Word-wrap to a pixel width. pdf-lib's own maxWidth wraps but reports no
+ * height, and the trade-space section needs exact heights to decide when to
+ * break a page — so the wrapping happens here instead.
+ */
+function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out.length > 0 ? out : [""];
+}
+
 function footer(page: PDFPage, f: Fonts) {
   page.drawLine({ start: { x: M, y: 78 }, end: { x: RIGHT, y: 78 }, thickness: 0.5, color: LINE });
   page.drawText("Planning estimate only - assumed returns are not guarantees; markets vary year to year.", {
@@ -60,6 +93,8 @@ export async function generateProjectionPdf(
   };
   const chart = chartPng && chartPng.length > 0 ? await doc.embedPng(chartPng) : undefined;
   const s = p.scenario;
+  const analysis = projectionAnalysis(p);
+  const verdict = headlineComparison(analysis);
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
 
@@ -147,6 +182,60 @@ export async function generateProjectionPdf(
     y -= 14;
   }
   y -= 8;
+
+  // ---- trade-space verdict callout ----
+  // The conclusion, called out before any detail: every section's one-line
+  // verdict plus the single comparison that decides a stay-or-go question,
+  // drawn as two bars on ONE scale (independent scales would lie about it).
+  {
+    const boxW = RIGHT - M;
+    const inner = boxW - 20;
+    const headlineBlocks = analysis.sections.map((sec) =>
+      wrapLines(`${sec.title}: ${sec.headline}`, f.reg, 8.5, inner)
+    );
+    const headlineRows = headlineBlocks.reduce((acc, block) => acc + block.length, 0);
+    const noteLines = verdict ? wrapLines(verdict.note, f.reg, 7.5, inner) : [];
+    const barBlock = verdict ? 6 + verdict.bars.length * 16 + noteLines.length * 9 : 0;
+    const boxH = 13 + headlineRows * 11 + barBlock + 16;
+
+    ensureSpace(boxH + 12);
+    const boxTop = y + 10;
+    page.drawRectangle({ x: M, y: boxTop - boxH, width: boxW, height: boxH, color: TINT });
+    page.drawRectangle({ x: M, y: boxTop - boxH, width: 3, height: boxH, color: ACCENT });
+
+    let by = y;
+    page.drawText(TRADE_SPACE_TITLE.toUpperCase(), { x: M + 10, y: by, size: 8, font: f.bold, color: ACCENT });
+    by -= 13;
+    for (const block of headlineBlocks) {
+      for (const lineText of block) {
+        page.drawText(lineText, { x: M + 10, y: by, size: 8.5, font: f.reg, color: INK });
+        by -= 11;
+      }
+    }
+    if (verdict) {
+      by -= 6;
+      const labelW = 150;
+      const barW = inner - labelW - 96;
+      for (const bar of verdict.bars) {
+        page.drawText(bar.label, { x: M + 10, y: by, size: 8, font: f.bold, color: INK, maxWidth: labelW - 4 });
+        const frac = verdict.max > 0 ? Math.max(0, bar.value) / verdict.max : 0;
+        page.drawRectangle({
+          x: M + 10 + labelW,
+          y: by - 2,
+          width: Math.max(1, barW * frac),
+          height: 9,
+          color: NAVY,
+        });
+        rightText(page, formatUsd(bar.value), RIGHT - 10, by, 8, f.bold, NAVY);
+        by -= 16;
+      }
+      for (const lineText of noteLines) {
+        page.drawText(lineText, { x: M + 10, y: by, size: 7.5, font: f.reg, color: MUTED });
+        by -= 9;
+      }
+    }
+    y = boxTop - boxH - 16;
+  }
 
   // ---- chart ----
   if (chart) {
@@ -269,6 +358,62 @@ export async function generateProjectionPdf(
         : `Verdict: ${r.winner === "roth" ? "Roth" : "Traditional"} comes out ahead by about ${formatUsd(r.advantage)} (net of the up-front tax).`,
       true
     );
+  }
+
+  // ---- the comprehensive trade space, in full ----
+  // Exact line heights (wrapLines) so a metric never straddles a page break.
+  const wrapped = (text: string, size: number, color: Rgb, indent = 0, bold = false) => {
+    const font = bold ? f.bold : f.reg;
+    for (const lineText of wrapLines(text, font, size, RIGHT - M - indent)) {
+      ensureSpace(size + 6);
+      page.drawText(lineText, { x: M + indent, y, size, font, color });
+      y -= size + 3.5;
+    }
+  };
+
+  for (const section of analysis.sections) {
+    sectionHead(`${TRADE_SPACE_TITLE.toUpperCase()} - ${section.title.toUpperCase()}`);
+    wrapped(section.headline, 9, NAVY, 0, true);
+    if (!section.complete) {
+      wrapped(
+        "An input this section needs was missing, so it reports only what could be computed - nothing here is filled in with a guess.",
+        7.5,
+        MUTED,
+        6
+      );
+    }
+    y -= 4;
+    for (const metric of section.metrics) {
+      const valueText = formatMetric(metric);
+      ensureSpace(24);
+      page.drawText(metric.label, {
+        x: M,
+        y,
+        size: 8.5,
+        font: f.bold,
+        color: INK,
+        maxWidth: RIGHT - M - f.bold.widthOfTextAtSize(valueText, 8.5) - 12,
+      });
+      rightText(page, valueText, RIGHT, y, 8.5, f.bold, NAVY);
+      y -= 11;
+      wrapped(metric.explanation, 7.5, MUTED, 8);
+      y -= 3;
+    }
+  }
+
+  // Assumptions and caveats travel WITH the numbers: a stay-vs-leave figure
+  // without them is worse than useless.
+  sectionHead("TRADE SPACE ASSUMPTIONS");
+  for (const a of collectAssumptions(analysis)) {
+    wrapped(`${a.label}: ${formatAnalysisValue(a.value, a.unit)}  (${sourceLabel(a.source)})`, 8.5, INK, 0, true);
+    wrapped(a.explanation, 7.5, MUTED, 8);
+    y -= 3;
+  }
+
+  sectionHead("TRADE SPACE CAVEATS");
+  for (const c of collectCaveats(analysis)) {
+    wrapped(`${severityLabel(c.severity)}: ${c.text}`, 7.5, c.severity === "info" ? MUTED : INK, 6);
+    y -= 2;
   }
 
   if (p.longTerm) {

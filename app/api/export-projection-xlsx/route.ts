@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { addDataBars, addTradeSpaceSheet, type LiveTradeSpaceRefs } from "@/lib/export/xlsx";
+import type { ProjectionExport } from "@/lib/export/projection";
+import { analyzeTradeSpace, type TradeSpaceAnalysis } from "@/lib/projection/trade-space";
+import {
+  DEFAULT_LIFE_EXPECTANCY_AGE,
+  DEFAULT_SAFE_WITHDRAWAL_RATE_PCT,
+  REGULAR_RETIREMENT_YEARS,
+  RETIREMENT_MULTIPLIER_PCT,
+} from "@/lib/projection/military-retirement";
 
 export const runtime = "nodejs"; // ExcelJS needs the Node runtime (not Edge)
 
@@ -35,9 +44,25 @@ type LiveModelPayload = {
     savServing: number;
     savAfter: number;
   };
+  /**
+   * OPTIONAL: the full report payload the CSV/TXT/PDF builders already
+   * receive. When present the Trade space sheet renders the real analysis
+   * (stay-in vs get-out with the pension priced in, Roth vs Traditional, IRA
+   * placement) instead of the general case. Absent, the sheet still ships —
+   * the live formula calculator asks the reader for the two facts this
+   * payload cannot carry (High-3 basic pay and years of service) rather than
+   * inventing them.
+   */
+  projection?: ProjectionExport;
+  /** OPTIONAL: base64 PNG of the growth chart, embedded pixel-exact. */
+  chartPngBase64?: string;
 };
 
-const MAX_BODY_BYTES = 32 * 1024;
+// Roomier than the live model alone needs: the optional report payload runs a
+// few KB per projected year and an embedded chart PNG is larger again. Still
+// bounded — this route is stateless and nothing is stored.
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_CHART_BYTES = 4 * 1024 * 1024;
 
 function num(x: unknown, fallback = 0) {
   const n = typeof x === "number" ? x : Number(x);
@@ -49,6 +74,140 @@ function clamp(n: number, min: number, max: number) {
 function safeFilePart(x: unknown, fallback: string): string {
   const s = String(x ?? "").replace(/[^A-Za-z0-9._-]/g, "");
   return s.length ? s : fallback;
+}
+
+/**
+ * Both tax-rate cells open at the SAME value, so the workbook's neutral state
+ * is the honest "effectively even" rather than an implied recommendation. It
+ * is a seed for a yellow input cell, never a claim about anyone's bracket, and
+ * it is overridden whenever the report payload carries real rates.
+ */
+const NEUTRAL_TAX_RATE_PCT = 22;
+
+/** Shape-check the optional report payload before the engine touches it. */
+function asProjectionExport(x: unknown): ProjectionExport | null {
+  if (!x || typeof x !== "object") return null;
+  const candidate = x as Partial<ProjectionExport>;
+  if (!candidate.scenario || typeof candidate.scenario !== "object") return null;
+  if (!Array.isArray(candidate.years)) return null;
+  if (!candidate.totals || typeof candidate.totals !== "object") return null;
+  if (!Array.isArray(candidate.promotions)) return null;
+  return candidate as ProjectionExport;
+}
+
+function decodeChartPng(x: unknown): Uint8Array | undefined {
+  if (typeof x !== "string" || x.length === 0) return undefined;
+  const base64 = x.replace(/^data:image\/png;base64,/, "");
+  if (base64.length > MAX_CHART_BYTES) return undefined;
+  try {
+    const bytes = Buffer.from(base64, "base64");
+    return bytes.length > 0 ? new Uint8Array(bytes) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * "Build a chart" sheet: copy-paste recipes against the real Projection
+ * layout, so the reader gets LIVE charts that move with the yellow inputs
+ * instead of a picture that silently goes stale.
+ */
+function addChartRecipeSheet(wb: ExcelJS.Workbook, lastRow: number) {
+  const ws = wb.addWorksheet("Build a chart");
+  ws.columns = [{ width: 30 }, { width: 40 }, { width: 68 }];
+
+  let r = 1;
+  const heading = (text: string) => {
+    const c = ws.getCell(r, 1);
+    c.value = text;
+    c.font = { bold: true, size: 12 };
+    r += 1;
+  };
+  const note = (text: string) => {
+    const c = ws.getCell(r, 1);
+    c.value = text;
+    c.font = { color: { argb: "FF6B7280" }, size: 10 };
+    ws.mergeCells(r, 1, r, 3);
+    r += 1;
+  };
+  const step = (label: string, value: string, why?: string) => {
+    ws.getCell(r, 1).value = label;
+    const v = ws.getCell(r, 2);
+    v.value = value;
+    v.font = { bold: true };
+    if (why) ws.getCell(r, 3).font = { color: { argb: "FF6B7280" }, size: 10 };
+    if (why) ws.getCell(r, 3).value = why;
+    r += 1;
+  };
+
+  heading("Build a chart from your projection");
+  note(
+    "Excel builds charts from data you select, and a chart you build stays LIVE — edit any yellow cell on Assumptions and the chart redraws with it. Each recipe below is a range you can paste straight into the Name Box (left of the formula bar) to select it."
+  );
+  r += 1;
+
+  const recipes: {
+    name: string;
+    ranges: string;
+    chart: string;
+    reads: string;
+    /** Overrides the Name Box hint when the selection isn't a literal range. */
+    selectHint?: string;
+  }[] = [
+    {
+      name: "Net worth over time",
+      ranges: `Projection!$A$1:$A$${lastRow},Projection!$I$1:$J$${lastRow}`,
+      chart: "Insert > Charts > Line (2-D Line)",
+      reads:
+        "Two lines: your projected total, and the same money in today's dollars. The gap between them IS inflation — it is the single most useful picture in this workbook.",
+    },
+    {
+      name: "Which account carries it",
+      ranges: `Projection!$A$1:$A$${lastRow},Projection!$D$1:$H$${lastRow}`,
+      chart: "Insert > Charts > Area > Stacked Area",
+      reads:
+        "TSP, IRA, 401(k), investments and savings stacked. Shows which account is actually doing the work, and when the civilian accounts overtake the military one.",
+    },
+    {
+      name: "Balance growth per year",
+      ranges: `Projection!$A$1:$A$${lastRow},Projection!$I$1:$I$${lastRow}`,
+      chart: "Insert > Charts > Column > Clustered Column",
+      reads:
+        "The same totals as bars. Compounding is easier to see here — the bars barely move early, then climb steeply once growth outruns contributions.",
+    },
+    {
+      name: "Staying in vs getting out",
+      ranges: "On the Trade space sheet: the two headline figures and their labels",
+      selectHint:
+        "Drag across the label column and the value column of that comparison — hold Ctrl to add the second block.",
+      chart: "Insert > Charts > Column > Clustered Column",
+      reads:
+        "A two-bar comparison at the same end age. Read it with the assumptions listed beside it — the answer moves a lot with the tax rate and the retirement age.",
+    },
+  ];
+
+  for (const rec of recipes) {
+    heading(rec.name);
+    step(
+      "1. Select this range",
+      rec.ranges,
+      rec.selectHint ?? "Paste into the Name Box and press Enter."
+    );
+    step("2. Insert the chart", rec.chart, "Google Sheets: Insert > Chart, then pick the type.");
+    step("3. What it tells you", "", rec.reads);
+    r += 1;
+  }
+
+  heading("Notes");
+  note(
+    "The comma in a range selects two blocks at once (the year column plus the value columns) — that is what puts years on the horizontal axis. In Google Sheets, hold Ctrl while dragging the second block instead."
+  );
+  note(
+    `Data runs from row 2 to row ${lastRow}. If you change the projection horizon and re-export, that last row moves — these recipes are written for THIS workbook.`
+  );
+  note(
+    "Columns on Projection: A Year, B Age, C Serving?, D TSP, E IRA, F 401(k), G Investments, H Savings, I Total, J Today's dollars."
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -101,9 +260,67 @@ export async function POST(req: NextRequest) {
     },
   };
 
+  // The optional full report. When it is absent nothing is invented: the
+  // engine is handed an empty year series, which makes it return null for the
+  // two sections that need a basic-pay history, and the Trade space sheet
+  // falls back to its live formula calculator for those.
+  const report = asProjectionExport(raw.projection);
+  const chartPng = decodeChartPng(raw.chartPngBase64);
+
+  const engineInput: ProjectionExport = report ?? {
+    generatedOn: new Date().toISOString().slice(0, 10),
+    scenario: {
+      branchLabel: "",
+      track: "",
+      grade: p.grade,
+      yos: 0,
+      currentAge: p.currentAge,
+      serviceYears: p.serviceYears,
+      projectionYears: p.projectionYears,
+      endYear: p.startYear + p.projectionYears,
+      tspPct: 0,
+      brs: true,
+      tspReturnPct: p.returnsPct.tsp,
+      invReturnPct: p.returnsPct.invest,
+      savApyPct: p.returnsPct.savings,
+      iraMonthly: p.monthly.iraServing,
+      iraUntilAge: p.monthly.iraUntilAge,
+      iraReturnPct: p.returnsPct.ira,
+      k401Monthly: p.monthly.k401After,
+      k401UntilAge: p.monthly.k401UntilAge,
+      k401ReturnPct: p.returnsPct.k401,
+      inflationPct: p.inflationPct,
+      payRaisePct: 0,
+      modelPromotions: false,
+    },
+    promotions: [],
+    // No basic-pay history travels in the live-model payload, so there is
+    // none here either. The engine degrades; it does not guess.
+    years: [],
+    totals: {
+      final: 0,
+      finalReal: 0,
+      atSeparation: null,
+      separationYear: null,
+      contributed: 0,
+      growth: 0,
+      agencyMatch: 0,
+    },
+  };
+
+  let analysis: TradeSpaceAnalysis | null = null;
+  try {
+    analysis = analyzeTradeSpace(engineInput);
+  } catch {
+    analysis = null; // a malformed report payload must never break the export
+  }
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "ActivePayOS";
   wb.created = new Date();
+  // Cells that ship a formula without a cached value are computed on open, so
+  // Google Sheets and LibreOffice populate them too.
+  wb.calcProperties.fullCalcOnLoad = true;
 
   // ----------------------------------------------------------------- Summary
   // Created FIRST so the workbook opens on the big picture. The cells are
@@ -132,6 +349,18 @@ export async function POST(req: NextRequest) {
     "The 'Serving?' column on the Projection sheet is a formula driven by the",
     "'Years still serving' assumption — while it is 1, the while-serving",
     "contribution amounts apply; after that, the after-service amounts do.",
+    "",
+    "Sheets in this workbook:",
+    "- Summary      headline numbers, live against the Projection sheet.",
+    "- Assumptions  every yellow cell you can edit.",
+    "- Projection   the year-by-year model. The balance columns carry data bars,",
+    "               so the growth curve is visible without leaving the table.",
+    "- Trade space  staying in vs getting out, Roth vs Traditional, and where an",
+    "               IRA fits — with the military pension priced in. The projected",
+    "               total does NOT include the pension (a pension is an income",
+    "               stream, not a balance), which is why that figure looks the",
+    "               same whether you serve 19 years or 20. Every assumption and",
+    "               caveat sits on that sheet beside the numbers it qualifies.",
     "",
     "Educational planning estimate, not financial advice. Verify against your",
     "LES and myPay. activepayos.com",
@@ -210,6 +439,45 @@ export async function POST(req: NextRequest) {
   const rIraBal = input("IRA", p.balances.ira, "", "#,##0");
   const rInvBal = input("Investments", p.balances.invest, "", "#,##0");
   const rSavBal = input("Savings", p.balances.savings, "", "#,##0");
+  row += 1;
+
+  // ---- Trade space inputs -------------------------------------------------
+  // These drive the live half of the Trade space sheet. Seeded from the report
+  // payload when it travelled; otherwise they are the two facts the live-model
+  // payload cannot carry, asked for rather than invented.
+  const pension = analysis?.retirement?.pension ?? null;
+  const seedHigh3 = pension?.high3.monthlyBase ?? report?.pension?.high3MonthlyBase ?? 0;
+  const seedYos = report ? Math.max(REGULAR_RETIREMENT_YEARS, report.scenario.yos + report.scenario.serviceYears) : REGULAR_RETIREMENT_YEARS;
+  const seedMultiplier = RETIREMENT_MULTIPLIER_PCT[report?.scenario.brs === false ? "high3" : "brs"];
+  const seedRetireAge = pension?.startAge ?? p.currentAge + Math.round(p.serviceYears);
+  const seedRoth = report?.rothTradeoff;
+
+  title("Trade space — military retirement");
+  const rHigh3 = input(
+    "High-3 monthly basic pay",
+    seedHigh3,
+    seedHigh3 > 0
+      ? "The average of your highest 36 months of basic pay. Allowances are excluded."
+      : "Enter the average of your highest 36 months of basic pay — this payload cannot carry it, so nothing is assumed."
+  );
+  const rStayYos = input("Years of service at retirement", seedYos, `A regular retirement needs ${REGULAR_RETIREMENT_YEARS} years. Below that the pension is $0 — a cliff, not a gradient.`, "0.0");
+  const rMult = input("Retired-pay multiplier (% per year of service)", seedMultiplier, "2.0 under the Blended Retirement System, 2.5 under legacy High-3.");
+  const rRetAge = input(
+    "Age retired pay starts",
+    seedRetireAge,
+    "Active-duty retired pay begins the month you retire — decades before a 401(k) is penalty-free. Make this line up with the years-of-service cell above.",
+    "0"
+  );
+  const rCola = input("Retired-pay COLA (%/yr)", p.inflationPct, "Retired pay tracks the FULL CPI, so it holds its purchasing power for life.");
+  const rSwr = input("Sustainable withdrawal rate (%)", DEFAULT_SAFE_WITHDRAWAL_RATE_PCT, "Used to convert the pension into a nest-egg equivalent, so it sits on the same scale as a balance.");
+  const rLife = input("Retired pay assumed through age", DEFAULT_LIFE_EXPECTANCY_AGE, "A planning assumption, not a prediction. Living longer makes the pension worth proportionally more.", "0");
+  row += 1;
+
+  title("Trade space — Roth vs Traditional");
+  const rTaxNow = input("Marginal tax rate today (%)", seedRoth?.taxRateNowPct ?? NEUTRAL_TAX_RATE_PCT, "What you would pay on the next dollar of income now, federal plus state. Replace with your own rate.");
+  const rTaxLater = input("Marginal tax rate at withdrawal (%)", seedRoth?.taxRateAtWithdrawalPct ?? NEUTRAL_TAX_RATE_PCT, "The single most important and least knowable input. Roth wins when this is higher than today's rate.");
+  const rRothMo = input("Monthly contribution being compared", seedRoth?.monthlyContribution ?? p.monthly.tspTotal, "The same dollars go in on both paths — that is what makes the comparison fair.");
+  const rRothYrs = input("Years contributing", seedRoth?.yearsContributing ?? p.projectionYears, "How long contributions keep arriving before the balance is withdrawn.", "0.0");
 
   const A = (r: number) => `Assumptions!$B$${r}`;
 
@@ -272,6 +540,20 @@ export async function POST(req: NextRequest) {
   }
   for (let r = 2; r <= p.projectionYears + 2; r += 1) {
     for (const c of [4, 5, 6, 7, 8, 9, 10]) s.getRow(r).getCell(c).numFmt = money;
+  }
+
+  // ---- data bars: the growth curve, visible in-cell -----------------------
+  // The five account columns share ONE rule (and therefore one scale), so the
+  // bars show the account mix honestly; scaling each column to its own max
+  // would draw a $3,000 savings balance the same length as a $900,000 TSP.
+  // The Total column gets its own rule because totals dwarf the components.
+  // Both anchor at zero rather than at the range's lowest value, so a bar
+  // length reads as a balance and not as a distance above the starting one.
+  {
+    const lastRow = p.projectionYears + 2;
+    addDataBars(s, `D2:H${lastRow}`, { min: 0, color: "FF2563EB" });
+    addDataBars(s, `I2:I${lastRow}`, { min: 0, color: "FF0D7C6B" });
+    addDataBars(s, `J2:J${lastRow}`, { min: 0, color: "FF94A3B8" });
   }
 
   // ------------------------------------------------- Summary (filled last)
@@ -339,6 +621,45 @@ export async function POST(req: NextRequest) {
       "0"
     );
   }
+
+  // ------------------------------------------------------- Trade space
+  // Appended before "Build a chart" so the existing Summary-first order holds.
+  if (analysis) {
+    const lastRow = p.projectionYears + 2;
+    const live: LiveTradeSpaceRefs = {
+      high3: A(rHigh3),
+      stayYos: A(rStayYos),
+      multiplierPct: A(rMult),
+      retireAge: A(rRetAge),
+      colaPct: A(rCola),
+      withdrawalPct: A(rSwr),
+      lifeAge: A(rLife),
+      taxNowPct: A(rTaxNow),
+      taxLaterPct: A(rTaxLater),
+      rothMonthly: A(rRothMo),
+      rothYears: A(rRothYrs),
+      returnPct: A(rTspRet),
+      projectedTotal: `Projection!$I$${lastRow}`,
+      horizonAge: `Projection!$B$${lastRow}`,
+    };
+    addTradeSpaceSheet(wb, analysis, {
+      live,
+      chartPng,
+      // Without the report payload the tool has no split between the member's
+      // own TSP contributions and the agency's, so the "used" figures would
+      // read as a confident zero. Left out rather than shown wrong.
+      skipTableKeys: report ? [] : ["ira-vs-tsp-room"],
+      skipAssumptionKeys: report ? [] : ["tsp-used"],
+    });
+  }
+
+  // ------------------------------------------------------- Build a chart
+  // Excel charts cannot be authored by ExcelJS 4.4 (no chart API), and a
+  // pasted image would go stale the moment an assumption is edited. So the
+  // workbook teaches the reader to build LIVE charts on their own data: those
+  // redraw themselves when the yellow inputs change, and they work in Google
+  // Sheets and LibreOffice too, where an embedded PNG is only ever a picture.
+  addChartRecipeSheet(wb, p.projectionYears + 2);
 
   const buffer = await wb.xlsx.writeBuffer();
   const filename = `activepayos_WealthModel_${p.grade}_${p.startYear + p.projectionYears}.xlsx`;

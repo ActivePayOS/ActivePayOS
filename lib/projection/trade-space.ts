@@ -253,6 +253,17 @@ export type TradeSpaceAnalysis = {
   caveats: Caveat[];
 };
 
+/** Every option with its default already applied. Internal to this module. */
+type ResolvedOptions = {
+  stayToYos: number;
+  leaveAtYearIndex?: number;
+  lifeExpectancyAge: number;
+  withdrawalRatePct: number;
+  colaPct: number;
+  discountRatePct: number;
+  civilianMonthlySavings?: number;
+};
+
 export type TradeSpaceOptions = {
   /** Total years of service the STAY arm serves to. Default max(20, modelled). */
   stayToYos?: number;
@@ -393,7 +404,7 @@ function buildPensionDetail(args: {
   };
 }
 
-function retirementSection(p: ProjectionExport, o: Required<Omit<TradeSpaceOptions, "civilianMonthlySavings" | "stayToYos" | "leaveAtYearIndex">> & { civilianMonthlySavings?: number }): RetirementAnalysis | null {
+function retirementSection(p: ProjectionExport, o: ResolvedOptions): RetirementAnalysis | null {
   const s = p.scenario;
   if (p.years.length === 0) return null;
 
@@ -626,9 +637,10 @@ function retirementSection(p: ProjectionExport, o: Required<Omit<TradeSpaceOptio
 
   // Continuation pay: BRS only, 7-12 YOS, and only ever as a range.
   if (s.brs) {
-    const cpYear = p.years.find((y) => y.serving && s.yos + p.years.indexOf(y) + 1 >= CONTINUATION_PAY_WINDOW.minYos);
+    const cpIdx = p.years.findIndex((y, i) => y.serving && s.yos + i + 1 >= CONTINUATION_PAY_WINDOW.minYos);
+    const cpYear = cpIdx >= 0 ? p.years[cpIdx] : null;
     const cpBasePay = cpYear?.basePayMonthly ?? contextHigh3.monthlyBase;
-    const cpYos = cpYear ? s.yos + p.years.indexOf(cpYear) + 1 : s.yos;
+    const cpYos = cpYear ? s.yos + cpIdx + 1 : s.yos;
     const cp = continuationPay({ monthlyBasePay: cpBasePay, yearsOfService: cpYos, brs: true });
     tables.push({
       key: "continuation-pay",
@@ -717,15 +729,18 @@ function counterfactualArm(args: {
   const { p, divergenceIndex, serveThroughIndex, blendReturn, modelledSeparationIndex } = args;
   const s = p.scenario;
   const years = p.years;
-  const balances = years.map((y) => y.total);
+  /** The modelled path, kept read-only — the counterfactual is read OUT of it. */
+  const modelled = years.map((y) => y.total);
+  const out = modelled.slice();
 
   const payLinkedPct = s.tspPct + agencyPctOfBasePay(s.tspPct, s.brs);
   const raise = s.payRaisePct / 100;
 
-  // Flat non-pay-linked saving while serving, implied by the modelled path.
-  let servingResidual = 0;
+  // Flat non-pay-linked saving while serving (investments, savings, an IRA),
+  // implied by the modelled path's own balances rather than guessed.
+  let servingResidual: number;
   if (divergenceIndex >= 1) {
-    const implied = balances[divergenceIndex] - balances[divergenceIndex - 1] * (1 + blendReturn);
+    const implied = modelled[divergenceIndex] - modelled[divergenceIndex - 1] * (1 + blendReturn);
     const payLinked = payLinkedPct * years[divergenceIndex].basePayMonthly * 12;
     servingResidual = Math.max(0, implied - payLinked);
   } else {
@@ -738,7 +753,7 @@ function counterfactualArm(args: {
     if (years[i].serving) servingBasePay.push(years[i].basePayMonthly);
   }
 
-  let balance = balances[divergenceIndex] ?? 0;
+  let balance = modelled[divergenceIndex] ?? 0;
   for (let i = divergenceIndex + 1; i < years.length; i++) {
     let contribution: number;
     if (i <= serveThroughIndex) {
@@ -748,22 +763,21 @@ function counterfactualArm(args: {
     } else if (i <= modelledSeparationIndex) {
       // This arm is already out while the modelled path is still serving:
       // substitute the civilian saving pace for the military one.
-      contribution = args.civilianStopAge !== null && years[i].age >= args.civilianStopAge ? 0 : args.civilianAnnualSaving;
+      contribution =
+        args.civilianStopAge !== null && years[i].age >= args.civilianStopAge ? 0 : args.civilianAnnualSaving;
     } else {
       // Past the modelled separation both paths are civilian, so the modelled
       // path's own implied contribution for this year is the best available.
-      const implied = balances[i] - balances[i - 1] * (1 + blendReturn);
-      contribution = Math.max(0, implied);
+      contribution = Math.max(0, modelled[i] - modelled[i - 1] * (1 + blendReturn));
     }
     balance = balance * (1 + blendReturn) + contribution;
-    balances[i] = balance;
+    out[i] = balance;
   }
 
-  const sepIdx = serveThroughIndex >= 0 && years[serveThroughIndex]?.serving !== undefined ? serveThroughIndex : divergenceIndex;
   return {
-    balances,
-    separationIndex: sepIdx,
-    yosAtSeparation: s.yos + sepIdx + 1,
+    balances: out,
+    separationIndex: serveThroughIndex,
+    yosAtSeparation: s.yos + serveThroughIndex + 1,
     servingBasePay,
     source: "counterfactual",
   };
@@ -812,18 +826,7 @@ function armSummary(args: {
   };
 }
 
-function stayVsLeaveSection(
-  p: ProjectionExport,
-  o: {
-    stayToYos: number;
-    leaveAtYearIndex?: number;
-    lifeExpectancyAge: number;
-    withdrawalRatePct: number;
-    colaPct: number;
-    discountRatePct: number;
-    civilianMonthlySavings?: number;
-  }
-): StayVsLeaveAnalysis {
+function stayVsLeaveSection(p: ProjectionExport, o: ResolvedOptions): StayVsLeaveAnalysis {
   const s = p.scenario;
   const years = p.years;
   const system: RetirementSystem = s.brs ? "brs" : "high3";
@@ -1120,6 +1123,15 @@ function stayVsLeaveSection(
       "usd",
       "Balance plus the pension's nest-egg equivalent, staying minus getting out, at the end of the projection. Negative means getting out comes out ahead.",
       { realValue: breakEven.gapAtEndReal, emphasis: "headline" }
+    ),
+    m(
+      "retirement-age",
+      "Age retired pay would start",
+      stay.pension?.startAge ?? 0,
+      stay.pension ? "age" : "count",
+      stay.pension
+        ? `Serving to ${Math.round(stay.yosAtSeparation)} years means retired pay begins at this age and never stops. That step — not the year-to-year saving difference — is what decides this comparison.`
+        : "Neither path reaches 20 years of service, so no retired pay starts on either side."
     ),
     m(
       "break-even-age",
@@ -1645,7 +1657,7 @@ function iraSection(p: ProjectionExport): IraAnalysis {
 export function analyzeTradeSpace(p: ProjectionExport, opts: TradeSpaceOptions = {}): TradeSpaceAnalysis {
   const s = p.scenario;
   const yosTotal = s.yos + s.serviceYears;
-  const resolved = {
+  const resolved: ResolvedOptions = {
     stayToYos: opts.stayToYos ?? Math.max(REGULAR_RETIREMENT_YEARS, yosTotal),
     leaveAtYearIndex: opts.leaveAtYearIndex,
     lifeExpectancyAge: opts.lifeExpectancyAge ?? DEFAULT_LIFE_EXPECTANCY_AGE,

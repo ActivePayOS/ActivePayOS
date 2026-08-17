@@ -1173,15 +1173,36 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     };
   });
 
+  // Uint8Array -> base64 without Buffer (this runs in the browser). Chunked so
+  // a large PNG cannot blow the argument limit on String.fromCharCode.
+  function bytesToBase64(bytes: Uint8Array): string {
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
+
   // Live Excel model: assumptions + formula-driven projection, built by the
   // stateless export route (same in-memory pattern as the budget's Excel
   // export — nothing is stored server-side). The long-term scope sends the
   // extended horizon so the workbook covers the same years as the report.
   async function fetchProjectionWorkbook(): Promise<Blob> {
+    // The workbook's Trade space sheet (stay-in vs get-out, the pension, and
+    // the Roth comparison) is built from the SAME ProjectionExport the CSV/PDF
+    // use. Without it the route degrades to the generic live-model sheets, so
+    // send it — and the growth chart the PDF already rasterizes — every time.
+    const report = buildProjectionExport(reportScope);
+    const chartPng = await reportChartPng();
+    const chartPngBase64 = chartPng ? bytesToBase64(chartPng) : undefined;
+
     const res = await fetch("/api/export-projection-xlsx", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        projection: report,
+        ...(chartPngBase64 ? { chartPngBase64 } : {}),
         grade,
         startYear,
         currentAge,

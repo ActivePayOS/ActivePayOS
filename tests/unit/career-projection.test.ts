@@ -40,6 +40,15 @@ describe("gradeNumber / gradeAtTis", () => {
     expect(gradeAtTis("navy", "officer", "O-1", 18)).toBe("O-2");
     expect(gradeAtTis("navy", "officer", "O-1", 120)).toBe("O-4");
   });
+
+  it("reads the officer schedule against the commissioned clock when given one", () => {
+    // The officer ladder counts commissioned service, so a prior-enlisted O-1
+    // with 3 years of TOTAL service is still an O-1 one year after pinning.
+    // Omitting the clock keeps the old single-figure behaviour.
+    // Full coverage lives in tests/unit/service-clocks.test.ts.
+    expect(gradeAtTis("airforce", "officer", "O-1", 36)).toBe("O-2");
+    expect(gradeAtTis("airforce", "officer", "O-1", 36, { promotionMonths: 12 })).toBe("O-1");
+  });
 });
 
 describe("upcomingPromotions", () => {
@@ -104,6 +113,13 @@ describe("projectCareerWealth", () => {
     // Year-end base pay matches the DFAS table at that grade/YOS.
     // Year 1 end: E-5 at 5 YOS → over-4 column = 3,946.80.
     expect(r.years[0].basePayMonthly).toBeCloseTo(3946.8, 1);
+  });
+
+  it("pays every month from the member's own grade when there is no E rate", () => {
+    const r = projectCareerWealth(BASE);
+    expect(r.payTimeline.every((p) => p.payGrade === p.grade)).toBe(true);
+    expect(r.priorEnlistedMonths).toBe(0);
+    expect(r.drawsEnlistedOfficerRate).toBe(false);
   });
 
   it("with 0% returns, TSP equals summed contributions (employee + 5% BRS)", () => {

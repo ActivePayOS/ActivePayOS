@@ -10,8 +10,19 @@
 //
 // Everything here is a pure function of its inputs. Planning estimates only.
 
-import { stepsForTrack, type BranchId, type Track } from "@/data/promotion/timing";
-import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
+import {
+  stepsForTrack,
+  type BranchId,
+  type OfficerTigOverrides,
+  type Track,
+} from "@/data/promotion/timing";
+import {
+  basePayFor,
+  payRowForGrade,
+  priorEnlistedMonthsFrom,
+  qualifiesForEnlistedOfficerRate,
+  type BasePayDataset,
+} from "@/lib/pay/basepay-lookup";
 import { IRA_CONTRIBUTION_LIMIT_2026 } from "@/lib/pay/ira";
 import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
 import { BRS_AUTOMATIC_PCT, brsMatchPct } from "@/lib/pay/tsp-pacing";
@@ -23,20 +34,49 @@ export function gradeNumber(grade: string): number {
 }
 
 /**
- * Expected grade at a given time-in-service, per the branch's typical
- * schedule, floored at the member's current grade (people ahead of the
+ * The two clocks a career runs on.
+ *
+ * Base pay is driven by TOTAL creditable service (the pay entry basic date —
+ * DoD FMR Vol 7A Ch 1 para 2.1.1.1, 37 U.S.C. 205). Officer promotion is driven
+ * by COMMISSIONED service and time in grade from the date of rank (10 U.S.C.
+ * 619(a)(1)). Prior enlisted service raises the pay column without moving the
+ * date of rank, so feeding one number to both clocks paid a brand-new
+ * prior-enlisted O-1 as an O-2 on day one. Enlisted careers use total service
+ * for both, so nothing about them changes.
+ */
+export type PromotionClockOptions = {
+  /**
+   * The promotion clock in months: commissioned service for officers, total
+   * service for enlisted. Omit it and the time-in-service figure already passed
+   * is used, which is exactly the old behaviour.
+   */
+  promotionMonths?: number;
+  /**
+   * Officer time-in-grade overrides in months, keyed by the grade reached
+   * ({ "O-2": 18 }). Omit for the branch defaults.
+   */
+  officerTigMonths?: OfficerTigOverrides;
+};
+
+/**
+ * Expected grade at a given point on the promotion clock, per the branch's
+ * typical schedule, floored at the member's current grade (people ahead of the
  * schedule don't get demoted by the model).
+ *
+ * `tisMonths` is the promotion clock unless `opts.promotionMonths` overrides it.
  */
 export function gradeAtTis(
   branch: BranchId,
   track: Track,
   currentGrade: string,
-  tisMonths: number
+  tisMonths: number,
+  opts?: PromotionClockOptions
 ): string {
+  const clock = opts?.promotionMonths ?? tisMonths;
   const prefix = track === "officer" ? "O" : "E";
   let grade = `${prefix}-1`;
-  for (const step of stepsForTrack(branch, track)) {
-    if (tisMonths >= step.tisMonths) grade = step.toGrade;
+  for (const step of stepsForTrack(branch, track, { officerTigMonths: opts?.officerTigMonths })) {
+    if (clock >= step.tisMonths) grade = step.toGrade;
   }
   return gradeNumber(grade) >= gradeNumber(currentGrade) ? grade : currentGrade;
 }
@@ -73,10 +113,13 @@ export function upcomingPromotions(
   track: Track,
   currentGrade: string,
   currentYosYears: number,
-  serviceYearsRemaining: number
+  serviceYearsRemaining: number,
+  opts?: PromotionClockOptions
 ): PromotionEvent[] {
-  const nowTis = currentYosYears * 12;
-  const endTis = (currentYosYears + serviceYearsRemaining) * 12;
+  // Both clocks tick at one month per month, so pin dates stay in calendar
+  // months from now no matter which clock the schedule is read against.
+  const nowTis = opts?.promotionMonths ?? currentYosYears * 12;
+  const endTis = nowTis + serviceYearsRemaining * 12;
   // No service window left: someone separating today gets no more promotions,
   // not even one that is already overdue.
   if (endTis <= nowTis) return [];
@@ -84,7 +127,7 @@ export function upcomingPromotions(
   const events: PromotionEvent[] = [];
   let cursor = nowTis;
 
-  for (const step of stepsForTrack(branch, track)) {
+  for (const step of stepsForTrack(branch, track, { officerTigMonths: opts?.officerTigMonths })) {
     if (gradeNumber(step.toGrade) <= gradeNumber(currentGrade)) continue;
     const pinTis = Math.max(step.tisMonths, cursor);
     if (pinTis > endTis) break;
@@ -107,7 +150,10 @@ export type LadderStatus = "held" | "due" | "upcoming" | "beyond";
 
 export type LadderStep = {
   toGrade: string;
+  /** Promotion-clock month this step pins at (commissioned service for officers). */
   tisMonths: number;
+  /** Officer steps: months in grade this step assumes. Undefined on the enlisted ladder. */
+  tigMonths?: number;
   competitive: boolean;
   note?: string;
   status: LadderStatus;
@@ -127,15 +173,21 @@ export function promotionLadder(
   track: Track,
   currentGrade: string,
   currentYosYears: number,
-  serviceYearsRemaining: number
+  serviceYearsRemaining: number,
+  opts?: PromotionClockOptions
 ): LadderStep[] {
   const ahead = new Map(
-    upcomingPromotions(branch, track, currentGrade, currentYosYears, serviceYearsRemaining).map(
-      (e) => [e.toGrade, e]
-    )
+    upcomingPromotions(
+      branch,
+      track,
+      currentGrade,
+      currentYosYears,
+      serviceYearsRemaining,
+      opts
+    ).map((e) => [e.toGrade, e])
   );
 
-  return stepsForTrack(branch, track).map((step) => {
+  return stepsForTrack(branch, track, { officerTigMonths: opts?.officerTigMonths }).map((step) => {
     const event = ahead.get(step.toGrade);
     const held = gradeNumber(step.toGrade) <= gradeNumber(currentGrade);
     const status: LadderStatus = held
@@ -148,6 +200,7 @@ export function promotionLadder(
     return {
       toGrade: step.toGrade,
       tisMonths: step.tisMonths,
+      tigMonths: step.tigMonths,
       competitive: !!step.competitive,
       note: step.note,
       status,
@@ -163,7 +216,24 @@ export type CareerProjectionInput = {
   branch: BranchId;
   track: Track;
   currentGrade: string;
+  /** TOTAL creditable service, in years. This drives base pay and nothing else. */
   currentYosYears: number;
+  /**
+   * Years of COMMISSIONED service, for officers who did not start as officers.
+   * This drives promotion timing; base pay keeps using currentYosYears.
+   *
+   * Omit it (or pass the same number as currentYosYears) and promotions are read
+   * against total service exactly as before — the right answer for enlisted
+   * members and for officers with no prior enlisted time. Ignored on the
+   * enlisted track, where the two clocks are the same clock.
+   */
+  currentCommissionedYears?: number;
+  /**
+   * Officer time-in-grade overrides in months, keyed by the grade reached
+   * ({ "O-2": 18 }). Omit for the branch defaults (24 months at O-2 and O-3 for
+   * Air Force and Space Force, the 10 U.S.C. 619 statutory minimums elsewhere).
+   */
+  officerTigMonths?: OfficerTigOverrides;
   /** How many more years the member stays in. */
   serviceYearsRemaining: number;
   /** When false, pay stays at the current grade (YOS raises still apply). */
@@ -265,8 +335,25 @@ export type CareerProjection = {
      */
     matchForfeited: number;
   };
-  /** Monthly series for the pay/rank chart: base pay + grade per month while serving. */
-  payTimeline: { monthIndex: number; grade: string; basePayMonthly: number; tspMonthly: number }[];
+  /**
+   * Months of prior enlisted service the model derived (total − commissioned),
+   * and whether that earns the O-1E/O-2E/O-3E rates. 0 / false for everyone who
+   * did not supply a commissioned-service figure.
+   */
+  priorEnlistedMonths: number;
+  drawsEnlistedOfficerRate: boolean;
+  /**
+   * Monthly series for the pay/rank chart: base pay + grade per month while
+   * serving. `grade` is the rank actually held; `payGrade` is the pay-table row
+   * it was paid from, which differs only for prior-enlisted officers ("O-1E").
+   */
+  payTimeline: {
+    monthIndex: number;
+    grade: string;
+    payGrade: string;
+    basePayMonthly: number;
+    tspMonthly: number;
+  }[];
 };
 
 const monthlyRate = (annual: number) => Math.pow(1 + annual, 1 / 12) - 1;
@@ -311,8 +398,37 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
   // boundary the year snapshots use.
   let tspDeferredThisYear = 0;
 
+  // ---- The two clocks ----
+  // Pay clock: total creditable service. Promotion clock: commissioned service
+  // for an officer who supplied it, otherwise the same total-service figure the
+  // model has always used.
+  const payNowMonths = i.currentYosYears * 12;
+  const commissionedRaw = i.track === "officer" ? i.currentCommissionedYears : undefined;
+  const commissionedGiven = typeof commissionedRaw === "number" && Number.isFinite(commissionedRaw);
+  // Commissioned service can never exceed total service, and a member who has
+  // only ever been an officer has the two clocks in lockstep.
+  const promoNowMonths = commissionedGiven
+    ? Math.max(0, Math.min(commissionedRaw, i.currentYosYears)) * 12
+    : payNowMonths;
+  // Prior enlisted service is the gap between the clocks. It never changes over
+  // the projection — both clocks advance one month per month.
+  const priorEnlistedMonths = commissionedGiven
+    ? priorEnlistedMonthsFrom(payNowMonths, promoNowMonths)
+    : 0;
+  const clockOpts: PromotionClockOptions = {
+    promotionMonths: promoNowMonths,
+    officerTigMonths: i.officerTigMonths,
+  };
+
   const promotions = i.modelPromotions
-    ? upcomingPromotions(i.branch, i.track, i.currentGrade, i.currentYosYears, serviceYears)
+    ? upcomingPromotions(
+        i.branch,
+        i.track,
+        i.currentGrade,
+        i.currentYosYears,
+        serviceYears,
+        clockOpts
+      )
     : [];
 
   const years: CareerYearSnapshot[] = [];
@@ -336,14 +452,19 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
     let contribution = 0;
 
     if (serving) {
-      const tisMonths = i.currentYosYears * 12 + m;
+      const tisMonths = payNowMonths + m;
       const grade = i.modelPromotions
-        ? gradeAtTis(i.branch, i.track, i.currentGrade, tisMonths)
+        ? gradeAtTis(i.branch, i.track, i.currentGrade, tisMonths, {
+            ...clockOpts,
+            promotionMonths: promoNowMonths + m,
+          })
         : i.currentGrade;
-      // Base pay from the DFAS table at this grade/YOS, escalated by the
-      // assumed annual military pay raise. Missing table cells (e.g. senior
-      // grades at low YOS) fall back to the last known pay.
-      const tablePay = basePayFor(i.basepay, grade, tisMonths / 12);
+      // Base pay from the DFAS table at this grade and TOTAL years of service,
+      // escalated by the assumed annual military pay raise. The lookup picks the
+      // O-1E/O-2E/O-3E row itself when the prior-enlisted threshold is met.
+      // Missing table cells (e.g. senior grades at low YOS) fall back to the
+      // last known pay.
+      const tablePay = basePayFor(i.basepay, grade, tisMonths / 12, { priorEnlistedMonths });
       const raiseFactor = Math.pow(1 + Math.max(0, i.annualPayRaise), yearIndex);
       const basePay = (tablePay ?? (lastBasePay > 0 ? lastBasePay / raiseFactor : 0)) * raiseFactor;
       lastGrade = grade;
@@ -387,6 +508,7 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       payTimeline.push({
         monthIndex: m,
         grade,
+        payGrade: payRowForGrade(grade, priorEnlistedMonths),
         basePayMonthly: basePay,
         tspMonthly: employee + agency,
       });
@@ -439,6 +561,8 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
     atSeparation,
     promotions,
     separationMonth,
+    priorEnlistedMonths,
+    drawsEnlistedOfficerRate: qualifiesForEnlistedOfficerRate(i.currentGrade, priorEnlistedMonths),
     totals: {
       contributed,
       growth: final.total - contributed,

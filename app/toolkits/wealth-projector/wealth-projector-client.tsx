@@ -38,24 +38,29 @@ import ReportPanel from "@/components/ReportPanel";
 import { blendedAnnualReturn, brsAgencyPct, yearsToDouble } from "@/lib/projection/wealth";
 import { computeTspPacing } from "@/lib/pay/tsp-pacing";
 import {
+  gradeNumber,
   projectCareerWealth,
   promotionLadder,
   upcomingPromotions,
   type CareerProjectionInput,
   type LadderStatus,
+  type PromotionClockOptions,
 } from "@/lib/projection/career";
 import {
   applyAssignments,
   budgetContributionCandidates,
   type ContributionDestination,
 } from "@/lib/projection/budget-link";
-import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
+import { basePayFor, payRowForGrade, type BasePayDataset } from "@/lib/pay/basepay-lookup";
 import {
   BRANCH_OPTIONS,
   BRANCHES,
+  officerTigSchedule,
   TIMING_BASIS,
   TIMING_DISCLAIMER,
   type BranchId,
+  type OfficerTigEntry,
+  type OfficerTigOverrides,
   type Track,
 } from "@/data/promotion/timing";
 import {
@@ -176,15 +181,61 @@ type TuneBaseline = {
   civSalary: number;
 };
 
-// How a promotion ladder step's typical time-in-service point reads in the
-// "How promotions are modelled" disclosure: months while that's the natural
-// unit (the 18-month O-2 point), years once it isn't.
-function tisPointLabel(months: number): string {
-  if (months < 24) return `${months} months of service`;
+// How a promotion ladder step's typical point reads in the "How promotions are
+// modelled" disclosure: months while that's the natural unit (the 18-month O-2
+// point), years once it isn't. Officer steps are counted from commissioning,
+// not from the pay clock, so they say so.
+function tisPointLabel(months: number, track: Track): string {
+  if (months < 24) {
+    return track === "officer" ? `${months} months commissioned` : `${months} months of service`;
+  }
   const years = months / 12;
+  const shown = Number.isInteger(years) ? String(years) : years.toFixed(1);
+  const span = `${shown} year${shown === "1" ? "" : "s"}`;
+  return track === "officer" ? `${span} commissioned` : span;
+}
+
+// A span of years as people say it: whole years plain, one decimal otherwise.
+function yearsLabel(years: number): string {
   const shown = Number.isInteger(years) ? String(years) : years.toFixed(1);
   return `${shown} year${shown === "1" ? "" : "s"}`;
 }
+
+// Where the time-in-grade figure driving the next officer promotion came from,
+// named plainly beside the editable number. The Air Force publishes 24 months
+// where 10 U.S.C. 619(a)(1) allows 18, and that gap is exactly the thing a
+// lieutenant needs to see rather than be argued with about.
+function tigBasisLine(entry: OfficerTigEntry, branch: BranchId, branchLabel: string): string {
+  const floor = `${entry.statutoryTigMonths} months is the statutory minimum (10 U.S.C. 619(a)(1))`;
+  const cite = branch === "airforce" || branch === "spaceforce" ? " (DAFI 36-2501 A2.1)" : "";
+  if (entry.source === "override") {
+    const fallback = entry.serviceTigMonths ?? entry.statutoryTigMonths;
+    return `Your own figure — Reset restores the ${branchLabel} default of ${fallback} months.`;
+  }
+  if (entry.source === "service") {
+    return `${branchLabel} publishes ${entry.tigMonths} months in grade${cite}; ${floor}. Change the number if yours differs.`;
+  }
+  return `${branchLabel} publishes no longer figure, so this is the ${entry.statutoryTigMonths}-month statutory minimum (10 U.S.C. 619(a)(1)). Change the number if yours differs.`;
+}
+
+// The commissioned-service field's helper copy. Long on purpose: it is the one
+// place the three clocks (pay, promotion, and the academy time that counts for
+// neither) get told apart.
+const COMMISSIONED_TIP =
+  "Promotion timing runs from your commissioning date, so this is the clock the promotion " +
+  "ladder is read against.\n\nPAY is different: base pay uses your TOTAL years of service, " +
+  "prior enlisted time included. That time raises your pay column but never back-dates your " +
+  "date of rank, so it cannot speed up an officer promotion.\n\nService academy time " +
+  "(USAFA / USMA / USNA) counts toward neither clock (10 U.S.C. 971(b)) — leave it out of " +
+  "both boxes.\n\nCommissioned straight from college, ROTC, or OTS with no prior service? " +
+  "Leave this equal to your years of service.";
+
+const TIG_TIP =
+  "Officer promotions pin after a set time in grade, counted from your date of rank. " +
+  "10 U.S.C. 619(a)(1) sets the minimum a service may never go below; a Service Secretary " +
+  "may lengthen it, and the Air Force and Space Force do.\n\nPublished figures move, so the " +
+  "number the projection uses is shown here and is yours to change.\n\nO-4 and above are " +
+  "board-driven — their published phase point sets the date, not this figure.";
 
 // Muted for the steps that aren't in play (already held, or past the service
 // window), amber for one whose typical point has already gone by.
@@ -285,6 +336,13 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [track, setTrack] = useState<Track>(() => paySnap?.track ?? "enlisted");
   const [grade, setGrade] = useState(() => paySnap?.grade ?? "E-4");
   const [yosNow, setYosNow] = useState(() => paySnap?.yos ?? 4);
+  // Years since commissioning. null = "not set", which follows years of service
+  // — the right answer for everyone who has only ever been an officer, and the
+  // behaviour this tool had before the field existed.
+  const [commYearsInput, setCommYearsInput] = useState<number | null>(null);
+  // Per-grade officer time-in-grade overrides, in months ({ "O-2": 18 }). Empty
+  // until the member disagrees with the published figure.
+  const [tigOverrides, setTigOverrides] = useState<Record<string, number>>({});
   const [modelPromotions, setModelPromotions] = useState(true);
   const [payRaisePct, setPayRaisePct] = useState(2.0);
 
@@ -461,6 +519,34 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const savMonthlyEff = savOn ? savMonthly : 0;
   const savMonthlyAfterEff = savOn ? savMonthlyAfter : 0;
 
+  // ---- The two career clocks ----
+  // Pay runs on TOTAL creditable service; officer promotion runs on
+  // COMMISSIONED service from the date of rank. They are the same number for
+  // everyone who commissioned without prior enlisted time, and only a
+  // prior-enlisted officer ever separates them.
+  const isOfficer = track === "officer";
+  const yosEff = Math.max(0, yosNow);
+  // Commissioned service can never exceed total service — the engine clamps the
+  // same way, so the field and the projection always agree.
+  const commissionedYears = Math.min(commYearsInput ?? yosEff, yosEff);
+  const priorServiceYears = isOfficer ? Math.max(0, yosEff - commissionedYears) : 0;
+
+  const officerTigMonths: OfficerTigOverrides | undefined = useMemo(
+    () => (isOfficer && Object.keys(tigOverrides).length > 0 ? tigOverrides : undefined),
+    [isOfficer, tigOverrides]
+  );
+
+  // What the preview pills and the ladder disclosure read the schedule against,
+  // so they can never drift from the projection's own clock. Undefined on the
+  // enlisted track, where time in service IS the promotion clock.
+  const clockOpts: PromotionClockOptions | undefined = useMemo(
+    () =>
+      isOfficer
+        ? { promotionMonths: commissionedYears * 12, officerTigMonths }
+        : undefined,
+    [isOfficer, commissionedYears, officerTigMonths]
+  );
+
   const careerInput: CareerProjectionInput = useMemo(
     () => ({
       basepay,
@@ -468,6 +554,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       track,
       currentGrade: grade,
       currentYosYears: Math.max(0, yosNow),
+      currentCommissionedYears: commissionedYears,
+      officerTigMonths,
       serviceYearsRemaining: serviceYears,
       modelPromotions,
       annualPayRaise: Math.max(0, payRaisePct) / 100,
@@ -502,6 +590,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       track,
       grade,
       yosNow,
+      commissionedYears,
+      officerTigMonths,
       serviceYears,
       modelPromotions,
       payRaisePct,
@@ -682,7 +772,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       : Math.max(50, Math.round((employeeNowForRoth() + iraMonthlyEff) / 25) * 25);
   // employeeNow is derived below; use a function so ordering stays simple.
   function employeeNowForRoth() {
-    const bp = basePayFor(basepay, grade, Math.max(0, yosNow)) ?? 0;
+    const bp =
+      basePayFor(basepay, grade, Math.max(0, yosNow), {
+        priorEnlistedMonths: projection.priorEnlistedMonths,
+      }) ?? 0;
     return Math.min(bp * contribPct, TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12);
   }
   const rothYearsContrib = Math.max(1, serviceYears > 0 ? serviceYears : projectionYears);
@@ -752,19 +845,42 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const promotionsPreview = useMemo(
     () =>
       modelPromotions
-        ? upcomingPromotions(branch, track, grade, Math.max(0, yosNow), serviceYears)
+        ? upcomingPromotions(branch, track, grade, yosEff, serviceYears, clockOpts)
         : [],
-    [modelPromotions, branch, track, grade, yosNow, serviceYears]
+    [modelPromotions, branch, track, grade, yosEff, serviceYears, clockOpts]
   );
   // The whole assumed ladder — including the steps already held and the ones
   // past the service window — so "why is there no O-2?" is answerable on the
   // page instead of only inside the engine.
   const ladder = useMemo(
-    () => promotionLadder(branch, track, grade, Math.max(0, yosNow), serviceYears),
-    [branch, track, grade, yosNow, serviceYears]
+    () => promotionLadder(branch, track, grade, yosEff, serviceYears, clockOpts),
+    [branch, track, grade, yosEff, serviceYears, clockOpts]
   );
 
-  const basePayNow = basePayFor(basepay, grade, Math.max(0, yosNow));
+  // The time-in-grade figure that actually sets the next officer promotion, so
+  // the assumption can be shown and edited instead of buried. Board-driven
+  // steps are paced by their phase point, not by time in grade, so no TIG lever
+  // is offered there.
+  const tigSchedule = useMemo(
+    () => (isOfficer ? officerTigSchedule(branch, officerTigMonths) : []),
+    [isOfficer, branch, officerTigMonths]
+  );
+  const nextTigEntry = useMemo(() => {
+    if (!isOfficer) return null;
+    const nextGrade =
+      promotionsPreview[0]?.toGrade ??
+      tigSchedule.find((e) => gradeNumber(e.toGrade) > gradeNumber(grade))?.toGrade;
+    const entry = nextGrade ? tigSchedule.find((e) => e.toGrade === nextGrade) : undefined;
+    return entry && entry.pacedBy === "time-in-grade" ? entry : null;
+  }, [isOfficer, promotionsPreview, tigSchedule, grade]);
+
+  // Prior enlisted service is the gap between the clocks; past 4 years it moves
+  // base pay onto the O-1E/O-2E/O-3E row. The engine resolves both, so the
+  // sidebar reads its answer rather than recomputing a second opinion.
+  const priorEnlistedMonths = projection.priorEnlistedMonths;
+  const drawsERate = projection.drawsEnlistedOfficerRate;
+  const payRowNow = payRowForGrade(grade, priorEnlistedMonths);
+  const basePayNow = basePayFor(basepay, grade, yosEff, { priorEnlistedMonths });
   const employeeNow = Math.min(
     (basePayNow ?? 0) * contribPct,
     TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
@@ -1607,7 +1723,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </h2>
                 {basePayNow !== null && (
                   <Explain
-                    title={`Looked up in the ${basepay.year ?? 2026} DFAS pay table for ${grade} at ${yosNow} years of service. This is the number your TSP percentage and the BRS match multiply.`}
+                    title={`Looked up in the ${basepay.year ?? 2026} DFAS pay table for ${payRowNow} at ${yosNow} years of TOTAL service. This is the number your TSP percentage and the BRS match multiply.`}
                     className="whitespace-nowrap text-sm font-semibold"
                   >
                     {`${fmtUSD0(basePayNow)}/mo base`}
@@ -1619,11 +1735,21 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   {`Pre-filled from your Pay Calculator (${paySnap.grade} @ ${paySnap.yos} YOS) — edit anything.`}
                 </p>
               )}
+              {drawsERate && (
+                <FieldNote className="mt-1.5">
+                  {`Over 4 years of prior enlisted service qualifies you for ${payRowNow} rates, so base pay is looked up in the ${payRowNow} row. The rank you wear is still ${grade}.`}
+                </FieldNote>
+              )}
               <FieldList>
                 <SelectRow
                   label="Branch"
                   value={branch}
-                  onChange={(v) => setBranch(v as BranchId)}
+                  onChange={(v) => {
+                    setBranch(v as BranchId);
+                    // Time-in-grade edits are answers to one service's published
+                    // figure, so they do not travel to another service.
+                    setTigOverrides({});
+                  }}
                   ariaLabel="Service branch"
                 >
                   {BRANCH_OPTIONS.map((b) => (
@@ -1640,6 +1766,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     const t = v as Track;
                     setTrack(t);
                     setGrade(t === "officer" ? "O-1" : "E-4");
+                    setCommYearsInput(null);
+                    setTigOverrides({});
                   }}
                   ariaLabel="Enlisted or officer"
                 >
@@ -1675,6 +1803,34 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     />
                   }
                 />
+
+                {isOfficer && (
+                  <FieldRow
+                    label="Years since commissioning"
+                    tip={COMMISSIONED_TIP}
+                    control={
+                      <UnitInput
+                        value={commissionedYears}
+                        onChange={(v) => setCommYearsInput(Math.max(0, Math.min(40, num(v))))}
+                        suffix="commissioned"
+                        width="w-12"
+                        min={0}
+                        max={40}
+                        step={0.5}
+                        ariaLabel="Years of commissioned service"
+                        title="Counted from your date of rank as an officer. Promotions run on this clock; base pay runs on total years of service."
+                      />
+                    }
+                  />
+                )}
+
+                {isOfficer && priorServiceYears > 0 && (
+                  <FieldNote>
+                    {`Counting ${yearsLabel(priorServiceYears)} of service before you commissioned: ` +
+                      `those years raise your base pay column, but not your promotion clock. ` +
+                      `Officer promotions are timed from your commissioning date only.`}
+                  </FieldNote>
+                )}
 
                 <FieldRow
                   label="Annual pay raise"
@@ -1740,6 +1896,81 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   </FieldNote>
                 )}
 
+                {/* A "now" pill on the officer track is the shape of the
+                    prior-enlisted bug: the promotion clock is still reading
+                    total service. Ask rather than assert — an officer really can
+                    be behind their branch's schedule. */}
+                {isOfficer &&
+                  modelPromotions &&
+                  priorServiceYears === 0 &&
+                  promotionsPreview.some((p) => p.behindSchedule) && (
+                    <FieldNote tone="warn">
+                      {`${
+                        promotionsPreview.find((p) => p.behindSchedule)?.toGrade
+                      } is modelled as pinning now because your promotion clock reads ` +
+                        `${yearsLabel(commissionedYears)}. If any of that was enlisted time, put ` +
+                        `your years since commissioning in the field above — prior enlisted ` +
+                        `service raises your pay column but never back-dates an officer's date of rank.`}
+                    </FieldNote>
+                  )}
+
+                {modelPromotions && nextTigEntry && (
+                  <FieldRow
+                    label={`Time in grade to ${nextTigEntry.toGrade}`}
+                    tip={TIG_TIP}
+                    control={
+                      <>
+                        <UnitInput
+                          value={nextTigEntry.tigMonths}
+                          onChange={(v) => {
+                            const months = Math.max(0, Math.min(120, num(v)));
+                            setTigOverrides((prev) => ({
+                              ...prev,
+                              [nextTigEntry.toGrade]: months,
+                            }));
+                          }}
+                          suffix="mo in grade"
+                          width="w-12"
+                          min={0}
+                          max={120}
+                          step={1}
+                          ariaLabel={`Months in grade required for promotion to ${nextTigEntry.toGrade}`}
+                        />
+                        {nextTigEntry.source === "override" && (
+                          <MiniButton
+                            onClick={() =>
+                              setTigOverrides((prev) => {
+                                const next = { ...prev };
+                                delete next[nextTigEntry.toGrade];
+                                return next;
+                              })
+                            }
+                            title={`Back to the ${
+                              BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? branch
+                            } published figure`}
+                          >
+                            Reset
+                          </MiniButton>
+                        )}
+                      </>
+                    }
+                    hint={
+                      <>
+                        {tigBasisLine(
+                          nextTigEntry,
+                          branch,
+                          BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? branch
+                        )}
+                        {nextTigEntry.tigMonths < nextTigEntry.statutoryTigMonths && (
+                          <span className="mt-0.5 block text-amber-700">
+                            {`Below the ${nextTigEntry.statutoryTigMonths}-month statutory floor — no service may promote sooner than that.`}
+                          </span>
+                        )}
+                      </>
+                    }
+                  />
+                )}
+
                 {modelPromotions && (
                   <details className="pt-1">
                     <summary className="cursor-pointer text-xs font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
@@ -1747,12 +1978,23 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                     </summary>
                     <div className="mt-2 space-y-2 rounded-2xl border p-3">
                       <p className="text-xs leading-5 text-gray-600">{TIMING_BASIS[track]}</p>
+                      {isOfficer && (
+                        <p className="text-xs leading-5 text-gray-600">
+                          {`Read against ${yearsLabel(commissionedYears)} of commissioned service` +
+                            (priorServiceYears > 0
+                              ? `, with ${yearsLabel(priorServiceYears)} of earlier service counted for pay only.`
+                              : ` — the same clock the projection uses.`)}
+                        </p>
+                      )}
                       <ul className="space-y-1.5">
                         {ladder.map((s) => (
                           <li key={s.toGrade} className={`text-xs ${LADDER_STATUS_TEXT[s.status]}`}>
                             <span className="flex flex-wrap items-center gap-1.5">
                               <span className="font-semibold">{s.toGrade}</span>
-                              <span>{tisPointLabel(s.tisMonths)}</span>
+                              <span>{tisPointLabel(s.tisMonths, track)}</span>
+                              {!s.competitive && s.tigMonths != null && (
+                                <span>{`${s.tigMonths} mo in grade`}</span>
+                              )}
                               <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">
                                 {s.competitive ? "board" : "automatic"}
                               </span>

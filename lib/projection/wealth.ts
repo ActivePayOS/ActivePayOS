@@ -6,18 +6,21 @@
 // returns are user-editable assumptions, not predictions.
 
 import type { FundAllocation } from "@/lib/pay/tsp";
+import { BRS_AUTOMATIC_PCT, brsMatchPct } from "@/lib/pay/tsp-pacing";
 
 // ---------------------------------------------------------------------------
 // BRS agency contributions (5 U.S.C. 8432; Blended Retirement System).
 // Service Automatic: 1% of base pay regardless of member contributions.
 // Service Matching: 100% on the first 3% contributed + 50% on the next 2%.
 // Contributing 5% therefore earns the full 5% agency total.
+//
+// The two halves behave differently when a member stops contributing (the
+// automatic 1% continues, the match does not), so they live separately in
+// lib/pay/tsp-pacing.ts. This stays the combined figure for callers that only
+// ever look at a month where the member is actually contributing.
 // ---------------------------------------------------------------------------
 export function brsAgencyPct(memberContribPct: number): number {
-  const c = Math.max(0, memberContribPct);
-  const dollarForDollar = Math.min(c, 0.03);
-  const fiftyCents = Math.min(Math.max(0, c - 0.03), 0.02) * 0.5;
-  return 0.01 + dollarForDollar + fiftyCents;
+  return BRS_AUTOMATIC_PCT + brsMatchPct(memberContribPct);
 }
 
 /** Blend per-fund annual returns (decimals) by a percent-based allocation. */

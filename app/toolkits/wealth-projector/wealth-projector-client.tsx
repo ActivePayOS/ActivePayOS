@@ -36,6 +36,7 @@ import {
 import RothTradeChart, { ROTH_COLOR, TRAD_COLOR } from "@/components/charts/RothTradeChart";
 import ReportPanel from "@/components/ReportPanel";
 import { blendedAnnualReturn, brsAgencyPct, yearsToDouble } from "@/lib/projection/wealth";
+import { computeTspPacing } from "@/lib/pay/tsp-pacing";
 import {
   projectCareerWealth,
   promotionLadder,
@@ -140,6 +141,26 @@ const OFFICER_GRADES = ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6"];
 // contributes nothing. This is an openly-labelled assumption, not a forecast —
 // the salary input starts here and the member changes it to their own number.
 const DEFAULT_CIVILIAN_SALARY = 80000;
+
+// Month names for the TSP pacing warning — the pacing engine returns a 1-based
+// calendar month.
+const TSP_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// A contribution percent as people say it: one decimal only when it matters.
+function tspPctLabel(pct: number) {
+  const shown = pct * 100;
+  return `${shown < 10 ? shown.toFixed(1) : Math.round(shown)}%`;
+}
+
+// The service match runs from 2 years of service to 26; from 50 the limit stops
+// contributions rather than the match, because the overflow rolls into
+// catch-up. Outside those windows a front-loaded election costs no match.
+const TSP_MATCH_STARTS_YOS = 2;
+const TSP_MATCH_ENDS_YOS = 26;
+const TSP_CATCH_UP_AGE = 50;
 
 // Everything the chart-side "Tune this plan" strip can move. The after-service
 // twins live here too: the strip writes both halves of a pair at once, but the
@@ -750,6 +771,38 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   );
   const agencyNow = brs ? (basePayNow ?? 0) * brsAgencyPct(contribPct) : 0;
 
+  // Where this election lands across the year. Reaching the limit early does not
+  // put more in — TSP stops the contributions, and the match is worked out on
+  // what actually goes in each month, so the stopped months earn none. (The
+  // "Spread it evenly" fix targets the percent whose last dollar lands in
+  // December, so applying it clears the warning rather than re-triggering it.)
+  const tspPacing = useMemo(
+    () => computeTspPacing(basePayNow ?? 0, contribPct, { brs }),
+    [basePayNow, contribPct, brs]
+  );
+  // Gates the engine deliberately leaves to the UI: no match before 2 years of
+  // service or after 26, and from 50 the overflow rolls into catch-up instead
+  // of stopping, so the match normally keeps going.
+  const tspAtCatchUpAge = currentAge >= TSP_CATCH_UP_AGE;
+  const tspMatchEligible =
+    brs && yosNow >= TSP_MATCH_STARTS_YOS && yosNow < TSP_MATCH_ENDS_YOS;
+  const showTspPacingWarning =
+    tspPacing.frontLoading && tspMatchEligible && !tspAtCatchUpAge;
+  // Past 26 years of service the match has ended, so nothing is at stake and
+  // nothing is said.
+  const showTspCatchUpNote =
+    tspPacing.frontLoading && brs && tspAtCatchUpAge && yosNow < TSP_MATCH_ENDS_YOS;
+  const showTspNotMatchedYet =
+    tspPacing.frontLoading && brs && !tspAtCatchUpAge && yosNow < TSP_MATCH_STARTS_YOS;
+  const tspStoppedPhrase =
+    tspPacing.monthsStopped === 1
+      ? "the last month of the year"
+      : `the last ${tspPacing.monthsStopped} months of the year`;
+  const tspStopMonth =
+    tspPacing.limitReachedInMonth === null
+      ? ""
+      : TSP_MONTH_NAMES[tspPacing.limitReachedInMonth - 1];
+
   // "What did my military time get me": TSP at separation, compounding alone.
   const militaryTspAtEnd = useMemo(() => {
     const sep = projection.atSeparation;
@@ -821,6 +874,22 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
       max: 100,
       suffix: "%",
       width: "w-12",
+      warning: showTspPacingWarning
+        ? `About ${fmtUSD0(
+            Math.round(tspPacing.matchLostTotal)
+          )} of BRS match forfeited a year: you reach the ${fmtUSD0(
+            tspPacing.limit
+          )} limit in ${tspStopMonth} and contribute nothing for ${tspStoppedPhrase}, and only money that goes in that month is matched. The automatic 1% keeps arriving; the match does not, and is not added back later.`
+        : undefined,
+      fix: showTspPacingWarning
+        ? {
+            label: `Spread it evenly — ${tspPctLabel(tspPacing.evenPct)}`,
+            title: `Sets your contribution to ${tspPctLabel(tspPacing.evenPct)} — ${fmtUSD0(
+              Math.round(tspPacing.evenMonthly)
+            )}/mo, so your last dollar lands on your December paycheck and you keep the full match all year.`,
+            onClick: () => setContribPct(tspPacing.evenPct),
+          }
+        : undefined,
       ariaLabel: "TSP contribution percent of base pay",
     },
     {
@@ -1872,6 +1941,57 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                 </FieldList>
 
                 <FieldNote tone="faint">{TSP_LIMIT_HINT}</FieldNote>
+
+                {showTspPacingWarning && (
+                  <div className="space-y-1.5">
+                    <FieldNote tone="warn">
+                      {`You'd forfeit about ${fmtUSD0(
+                        Math.round(tspPacing.matchLostTotal)
+                      )} of BRS match a year. At ${tspPctLabel(contribPct)} you reach the ${fmtUSD0(
+                        tspPacing.limit
+                      )} limit in ${tspStopMonth}, then contribute nothing for ${tspStoppedPhrase} — and your service only matches money that actually goes in that month. Contributing faster doesn't get you more. It can get you less.`}
+                    </FieldNote>
+                    <FieldNote tone="warn">
+                      {"The automatic 1% keeps arriving in those months. Only the match on your own money — up to 4% — stops, and it is not added back later."}
+                    </FieldNote>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <MiniButton
+                        onClick={() => setContribPct(tspPacing.evenPct)}
+                        title={`Sets your contribution to ${tspPctLabel(
+                          tspPacing.evenPct
+                        )} — ${fmtUSD0(
+                          Math.round(tspPacing.evenMonthly)
+                        )}/mo, so your last dollar lands on your December paycheck and you keep the full match all year.`}
+                      >
+                        {`Spread it evenly — ${tspPctLabel(tspPacing.evenPct)}`}
+                      </MiniButton>
+                      <span className="text-xs text-gray-500">
+                        {`${fmtUSD0(
+                          Math.round(tspPacing.evenMonthly)
+                        )}/mo — your last dollar lands in December.`}
+                      </span>
+                    </div>
+                    <FieldNote tone="warn">
+                      {"Estimate: it assumes twelve equal months and today's base pay. Election changes take effect at the end of the current month, so act a month before you would hit the limit. Part-way through the year already? The calculator below uses what you have put in so far."}
+                    </FieldNote>
+                  </div>
+                )}
+
+                {showTspCatchUpNote && (
+                  <FieldNote tone="warn">
+                    {`At ${tspPctLabel(contribPct)} you reach the ${fmtUSD0(
+                      tspPacing.limit
+                    )} limit in ${tspStopMonth}. From 50, contributions past the limit roll into catch-up instead of stopping, so your match normally keeps going — until the catch-up room runs out too.`}
+                  </FieldNote>
+                )}
+
+                {showTspNotMatchedYet && (
+                  <FieldNote tone="warn">
+                    {`At ${tspPctLabel(contribPct)} you reach the ${fmtUSD0(
+                      tspPacing.limit
+                    )} limit in ${tspStopMonth} and contribute nothing for ${tspStoppedPhrase}. No match is lost yet — your service starts matching after 2 years of service — and the automatic 1% keeps arriving once you are past 60 days of service.`}
+                  </FieldNote>
+                )}
 
                 <TspResetCalculator
                   monthlyBasePay={basePayNow ?? 0}

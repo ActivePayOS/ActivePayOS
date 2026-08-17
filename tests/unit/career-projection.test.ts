@@ -11,6 +11,7 @@ import {
 } from "@/lib/projection/career";
 import { type BasePayDataset } from "@/lib/pay/basepay-lookup";
 import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
+import { computeTspPacing } from "@/lib/pay/tsp-pacing";
 import basepay2026 from "@/data/basepay/2026.json";
 
 const ds = basepay2026 as unknown as BasePayDataset;
@@ -210,5 +211,118 @@ describe("projectCareerWealth", () => {
       k401Return: 0,
     });
     expect(r.final.balances.k401).toBeCloseTo(700 * 24, 6);
+  });
+});
+
+// The front-loading loss the whole feature exists for: TSP stops you at the
+// annual limit, and the service only matches the money that actually went in
+// that month, so a high percent buys you LESS agency money over the same
+// career. The engine has to actually model that, not assume even spreading.
+describe("projectCareerWealth — TSP front-loading", () => {
+  const LIMIT = TSP_ELECTIVE_DEFERRAL_LIMIT_2026;
+  const paced = projectCareerWealth({ ...BASE, tspPct: 0.05 });
+  const heavy = projectCareerWealth({ ...BASE, tspPct: 0.6 });
+
+  it("contributes the elected percent up front, not an evenly-smeared twelfth", () => {
+    // The bug this replaces capped every month at LIMIT/12. Month 1 must show
+    // the full 60% election plus the full 5% agency contribution.
+    const first = heavy.payTimeline[0];
+    expect(first.tspMonthly).toBeCloseTo(first.basePayMonthly * 0.65, 4);
+    expect(first.tspMonthly).toBeGreaterThan(LIMIT / 12);
+  });
+
+  it("stops at the annual limit and resets each January", () => {
+    // Five years of service, each capped at the year's elective deferral limit.
+    expect(heavy.totals.employeeTsp).toBeCloseTo(LIMIT * 5, 4);
+  });
+
+  it("earns LESS agency money at 60% than at a paced 5% over the same career", () => {
+    expect(heavy.totals.agencyMatch).toBeLessThan(paced.totals.agencyMatch);
+    expect(heavy.totals.employeeTsp).toBeGreaterThan(paced.totals.employeeTsp);
+  });
+
+  it("reports the gap as forfeited match, to the dollar", () => {
+    expect(heavy.totals.matchForfeited).toBeGreaterThan(0);
+    expect(heavy.totals.matchForfeited).toBeCloseTo(
+      paced.totals.agencyMatch - heavy.totals.agencyMatch,
+      6
+    );
+  });
+
+  it("keeps the Service Automatic 1% arriving in the stopped months", () => {
+    // A stopped month contributes nothing and is matched nothing, but the
+    // automatic 1% of base pay lands anyway — it is never forfeited.
+    const stopped = heavy.payTimeline.filter(
+      (p) => p.tspMonthly < p.basePayMonthly * 0.02
+    );
+    expect(stopped.length).toBeGreaterThan(0);
+    for (const p of stopped) {
+      expect(p.tspMonthly).toBeCloseTo(p.basePayMonthly * 0.01, 6);
+    }
+    // Nothing ever drops to zero while serving.
+    expect(heavy.payTimeline.every((p) => p.tspMonthly > 0)).toBe(true);
+  });
+
+  it("still matches the partial contribution in the month the limit truncates it", () => {
+    // Pay is flat for the first year, so the month the limit bites is the one
+    // where only part of the election fits. That partial is still 5%+ of base
+    // pay, so it earns the full 5% agency contribution — not zero.
+    const pay = heavy.payTimeline[0].basePayMonthly;
+    const elected = pay * 0.6;
+    const truncatedIndex = Math.floor(LIMIT / elected);
+    const partial = LIMIT - truncatedIndex * elected;
+    expect(partial).toBeGreaterThan(0);
+    expect(partial).toBeLessThan(elected);
+    expect(partial / pay).toBeGreaterThan(0.05);
+    const month = heavy.payTimeline[truncatedIndex];
+    expect(month.basePayMonthly).toBeCloseTo(pay, 6);
+    expect(month.tspMonthly).toBeCloseTo(partial + pay * 0.05, 4);
+  });
+
+  it("leaves a 5% election completely unaffected (regression guard)", () => {
+    const basePayTotal = paced.payTimeline.reduce((a, p) => a + p.basePayMonthly, 0);
+    expect(paced.totals.employeeTsp).toBeCloseTo(basePayTotal * 0.05, 6);
+    expect(paced.totals.agencyMatch).toBeCloseTo(basePayTotal * 0.05, 6);
+    expect(paced.totals.matchForfeited).toBe(0);
+    expect(paced.payTimeline.every((p) => p.tspMonthly > 0)).toBe(true);
+  });
+
+  it("does not fire below the even pace", () => {
+    // 45% of this pay never reaches the limit inside a year, so nothing stops
+    // and nothing is forfeited — the warning must not over-fire.
+    const r = projectCareerWealth({ ...BASE, tspPct: 0.45 });
+    expect(r.totals.matchForfeited).toBe(0);
+    expect(r.totals.agencyMatch).toBeCloseTo(paced.totals.agencyMatch, 6);
+  });
+
+  it("has no match to forfeit when the member is not under BRS", () => {
+    const r = projectCareerWealth({ ...BASE, tspPct: 0.6, brs: false });
+    expect(r.totals.agencyMatch).toBe(0);
+    expect(r.totals.matchForfeited).toBe(0);
+    expect(r.totals.employeeTsp).toBeCloseTo(LIMIT * 5, 4);
+  });
+
+  it("agrees with the shared pacing helper the UI reads from", () => {
+    // One year, flat pay, no raise — the exact case the helper models, so the
+    // engine's forfeiture and the helper's estimate must be the same dollars.
+    const oneYear = projectCareerWealth({
+      ...BASE,
+      tspPct: 0.6,
+      serviceYearsRemaining: 1,
+      projectionYears: 1,
+    });
+    const pay = oneYear.payTimeline[0].basePayMonthly;
+    expect(oneYear.payTimeline.every((p) => p.basePayMonthly === pay)).toBe(true);
+
+    const pacing = computeTspPacing(pay, 0.6);
+    expect(pacing.frontLoading).toBe(true);
+    expect(oneYear.totals.matchForfeited).toBeCloseTo(pacing.matchLostTotal, 6);
+
+    // Both agree on which month runs out of room. Helper months are 1-based,
+    // so the first fully-stopped month sits at that index in the timeline.
+    const firstStopped = oneYear.payTimeline.findIndex(
+      (p) => p.tspMonthly < p.basePayMonthly * 0.02
+    );
+    expect(firstStopped).toBe(pacing.limitReachedInMonth);
   });
 });

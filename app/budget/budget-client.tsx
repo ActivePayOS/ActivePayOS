@@ -19,6 +19,7 @@ import {
   TSP_MAX_EARLY_WARNING,
   type FundAllocation,
 } from "@/lib/pay/tsp";
+import { computeTspPacing } from "@/lib/pay/tsp-pacing";
 import {
   IRA_CONTRIBUTION_LIMIT_2026,
   IRA_FEE_DISCLAIMER,
@@ -100,6 +101,19 @@ const FORMAT_MIME: Record<Exclude<ReportFormat, "all">, string> = {
 };
 
 const STORAGE_KEY = "activepayos:budget:v1";
+
+// Month names for the TSP pacing warning — the pacing engine returns a 1-based
+// calendar month.
+const TSP_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// A contribution percent as people say it: one decimal only when it matters.
+function tspPctLabel(pct: number) {
+  const shown = pct * 100;
+  return `${shown < 10 ? shown.toFixed(1) : Math.round(shown)}%`;
+}
 
 // Hydration flag without an effect: getServerSnapshot returns false (SSR + the
 // hydrating render), the client snapshot returns true, so we render the
@@ -338,6 +352,26 @@ export default function BudgetClient() {
   const tspPctToMax =
     TSP_ELECTIVE_DEFERRAL_LIMIT_2026 > 0 ? tspAnnual / TSP_ELECTIVE_DEFERRAL_LIMIT_2026 : 0;
   const fundTotal = TSP_FUNDS.reduce((a, f) => a + (fundAlloc[f.key] || 0), 0);
+
+  // Where this election lands across the year. Reaching the limit early does not
+  // put more in — payroll stops the contributions, and the BRS match is worked
+  // out on what actually goes in each month, so the stopped months earn none.
+  // (The Max button targets the percent whose last dollar lands in December, so
+  // it never trips this.) The budget tool knows no years of service or age, so
+  // the copy hedges those gates rather than suppressing the warning.
+  const tspPacing = useMemo(
+    () => computeTspPacing(Math.max(0, tspBase?.amount ?? 0), tspPct),
+    [tspBase?.amount, tspPct]
+  );
+  const showTspPacingWarning = showTspPanel && tspPacing.frontLoading;
+  const tspStoppedPhrase =
+    tspPacing.monthsStopped === 1
+      ? "the last month of the year"
+      : `the last ${tspPacing.monthsStopped} months of the year`;
+  const tspStopMonth =
+    tspPacing.limitReachedInMonth === null
+      ? ""
+      : TSP_MONTH_NAMES[tspPacing.limitReachedInMonth - 1];
 
   // Civilian IRA contribution (fixed monthly $).
   const iraMonthlyEff = iraEnabled ? Math.max(0, iraMonthly) : 0;
@@ -1212,9 +1246,15 @@ export default function BudgetClient() {
                   {tspAnnual <= 0
                     ? "Set a percentage to start contributing."
                     : tspPctToMax > 1
-                    ? `Over the annual limit by ${fmtUSD0(
-                        tspAnnual - TSP_ELECTIVE_DEFERRAL_LIMIT_2026
-                      )} — payroll stops contributions once you hit the cap.`
+                    ? // The pacing warning below spells out the stop and its cost,
+                      // so this line stays to the overage when that one is showing.
+                      showTspPacingWarning
+                      ? `Over the annual limit by ${fmtUSD0(
+                          tspAnnual - TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                        )}.`
+                      : `Over the annual limit by ${fmtUSD0(
+                          tspAnnual - TSP_ELECTIVE_DEFERRAL_LIMIT_2026
+                        )} — payroll stops contributions once you hit the cap.`
                     : tspPctToMax >= 0.95
                     ? "You'll just about max out the annual limit — nice."
                     : `${fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026 - tspAnnual)} (${Math.round(
@@ -1222,6 +1262,47 @@ export default function BudgetClient() {
                       )}%) left before you hit the limit.`}
                 </div>
               </div>
+
+              {showTspPacingWarning && (
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-xs leading-5 text-amber-700">
+                    You&rsquo;d forfeit about {fmtUSD0(Math.round(tspPacing.matchLostTotal))} of BRS
+                    match this year. At {tspPctLabel(tspPct)} you reach the{" "}
+                    {fmtUSD0(tspPacing.limit)} limit in{" "}
+                    {tspStopMonth}, then contribute nothing for {tspStoppedPhrase} — and your service
+                    only matches money that actually goes in that month. Contributing faster
+                    doesn&rsquo;t get you more. It can get you less.
+                  </p>
+                  <p className="text-xs leading-5 text-amber-700">
+                    The automatic 1% keeps arriving in those months. Only the match on your own money
+                    — up to 4% — stops, and it is not added back later.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setTspPct(tspPacing.evenPct)}
+                      className="rounded-lg border px-2 py-1 text-xs font-medium hover:bg-gray-100"
+                      title={`Sets your contribution to ${tspPctLabel(tspPacing.evenPct)} — ${fmtUSD0(
+                        Math.round(tspPacing.evenMonthly)
+                      )}/mo, so your last dollar lands on your December paycheck and you keep the full match all year.`}
+                    >
+                      Spread it evenly — {tspPctLabel(tspPacing.evenPct)}
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      {fmtUSD0(Math.round(tspPacing.evenMonthly))}/mo — your last dollar lands in
+                      December.
+                    </span>
+                  </div>
+                  <p className="text-xs leading-5 text-amber-700">
+                    Estimate: it assumes twelve equal months, flat base pay, that you are past 2 years
+                    of service (when your service starts matching), and that you are under 50 — at 50
+                    and over, contributions past the limit roll into catch-up instead of stopping.
+                    Election changes take effect at the end of the current month, so act a month
+                    before you would hit the limit. Part-way through the year already? The calculator
+                    below uses what you have put in so far.
+                  </p>
+                </div>
+              )}
 
               <TspResetCalculator
                 className="mt-3"

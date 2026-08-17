@@ -24,6 +24,7 @@ import {
   TSP_LIMIT_SUMMARY,
   TSP_MAX_EARLY_WARNING,
 } from "@/lib/pay/tsp";
+import { computeTspPacing } from "@/lib/pay/tsp-pacing";
 import {
   computeCivilianEquivalent,
   CIVILIAN_EQUIVALENT_ASSUMPTIONS,
@@ -257,6 +258,38 @@ function fmtUSD0(v: number | null | undefined) {
       }).format(v)
     : "-";
 }
+
+// Whole dollars. Currency style defaults BOTH fraction digits to 2, so a
+// rounded figure still renders as "$329.00" unless the minimum is pinned to 0 —
+// which is why round numbers in prose need this rather than fmtUSD0.
+function fmtWholeUSD(v: number | null | undefined) {
+  return typeof v === "number" && Number.isFinite(v)
+    ? new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(v)
+    : "-";
+}
+
+// Month names for the TSP pacing warning — the pacing engine returns a 1-based
+// calendar month.
+const TSP_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// A contribution percent as people say it: one decimal only when it matters.
+function tspPctLabel(pct: number) {
+  const shown = pct * 100;
+  return `${shown < 10 ? shown.toFixed(1) : Math.round(shown)}%`;
+}
+
+// The service match runs from 2 years of service to 26 — outside that window a
+// front-loaded election costs no match, so the warning would be false.
+const TSP_MATCH_STARTS_YOS = 2;
+const TSP_MATCH_ENDS_YOS = 26;
 
 function tableKeyForGrade(g: PayGrade) {
   if (g.startsWith("W-")) return "WO";
@@ -664,6 +697,30 @@ export default function PayClient({
     if (annualBase <= 0) return;
     setTspPct(Math.min(1, TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / annualBase));
   }
+
+  // Where this election lands across the year. Hitting the limit early does not
+  // put more in — it stops the contributions, and the BRS match is worked out
+  // on what actually goes in each month, so the stopped months earn none.
+  // (The Max button targets exactly the percent whose last dollar lands in
+  // December, so it never trips this.)
+  const tspPacing = useMemo(
+    () => computeTspPacing(Math.max(0, basePay), tspPct),
+    [basePay, tspPct]
+  );
+  // Only warn where there is a match to lose: it starts at 2 years of service
+  // and ends at 26. Outside that window the automatic 1% is all there is, and
+  // it keeps arriving regardless.
+  const tspMatchEligible = yos >= TSP_MATCH_STARTS_YOS && yos < TSP_MATCH_ENDS_YOS;
+  const showTspPacingWarning = tspPacing.frontLoading && tspMatchEligible;
+  const showTspNotMatchedYet = tspPacing.frontLoading && yos < TSP_MATCH_STARTS_YOS;
+  const tspStoppedPhrase =
+    tspPacing.monthsStopped === 1
+      ? "the last month of the year"
+      : `the last ${tspPacing.monthsStopped} months of the year`;
+  const tspStopMonth =
+    tspPacing.limitReachedInMonth === null
+      ? ""
+      : TSP_MONTH_NAMES[tspPacing.limitReachedInMonth - 1];
 
   // Scenario B (comparator): same duty location, settings, and special pays —
   // different grade and years of service (covers "next rank" and officer↔enlisted).
@@ -1418,13 +1475,67 @@ export default function PayClient({
                       }}
                     />
                   </div>
-                  {tspPctToMax > 1 && (
+                  {/* The pacing warning below says all of this and the cost, so
+                      the blunt over-limit line stands in only when it is gated off. */}
+                  {tspPctToMax > 1 && !showTspPacingWarning && (
                     <p className="mt-1 text-xs text-red-600">
                       Over the annual limit — payroll stops contributions once you hit{" "}
                       {fmtUSD0(TSP_ELECTIVE_DEFERRAL_LIMIT_2026)}.
                     </p>
                   )}
                 </div>
+
+                {showTspPacingWarning && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-xs leading-5 text-amber-700">
+                      You&rsquo;d forfeit about {fmtWholeUSD(Math.round(tspPacing.matchLostTotal))} of BRS
+                      match this year. At {tspPctLabel(tspPct)} you reach the{" "}
+                      {fmtWholeUSD(tspPacing.limit)} limit in{" "}
+                      {tspStopMonth}, then contribute nothing for {tspStoppedPhrase}{" "}
+                      — and your service
+                      only matches money that actually goes in that month. Contributing faster
+                      doesn&rsquo;t get you more. It can get you less.
+                    </p>
+                    <p className="text-xs leading-5 text-amber-700">
+                      The automatic 1% keeps arriving in those months. Only the match on your own money
+                      — up to 4% — stops, and it is not added back later.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setTspPct(tspPacing.evenPct)}
+                        className="shrink-0 rounded-xl border px-3 py-1.5 text-sm font-medium hover:bg-gray-100"
+                        title={`Sets your contribution to ${tspPctLabel(
+                          tspPacing.evenPct
+                        )} — ${fmtWholeUSD(
+                          Math.round(tspPacing.evenMonthly)
+                        )}/mo, so your last dollar lands on your December paycheck and you keep the full match all year.`}
+                      >
+                        Spread it evenly — {tspPctLabel(tspPacing.evenPct)}
+                      </button>
+                      <span className="text-xs text-gray-500">
+                        {fmtWholeUSD(Math.round(tspPacing.evenMonthly))}/mo — your last dollar lands in
+                        December.
+                      </span>
+                    </div>
+                    <p className="text-xs leading-5 text-amber-700">
+                      Estimate: it assumes twelve equal months, flat base pay, and that you are under
+                      50 — at 50 and over, contributions past the limit roll into catch-up instead of
+                      stopping. Election changes take effect at the end of the current month, so act a
+                      month before you would hit the limit. Part-way through the year already? The
+                      calculator below uses what you have put in so far.
+                    </p>
+                  </div>
+                )}
+
+                {showTspNotMatchedYet && (
+                  <p className="mt-2 text-xs leading-5 text-amber-700">
+                    At {tspPctLabel(tspPct)} you reach the {fmtUSD0(tspPacing.limit)} limit in{" "}
+                    {tspStopMonth} and contribute nothing for {tspStoppedPhrase}. No match is lost yet
+                    — your service starts matching after 2 years of service — and the automatic 1%
+                    keeps arriving once you are past 60 days of service.
+                  </p>
+                )}
 
                 <TspResetCalculator
                   className="mt-3"

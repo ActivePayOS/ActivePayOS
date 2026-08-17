@@ -14,7 +14,7 @@ import { stepsForTrack, type BranchId, type Track } from "@/data/promotion/timin
 import { basePayFor, type BasePayDataset } from "@/lib/pay/basepay-lookup";
 import { IRA_CONTRIBUTION_LIMIT_2026 } from "@/lib/pay/ira";
 import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
-import { brsAgencyPct } from "@/lib/projection/wealth";
+import { BRS_AUTOMATIC_PCT, brsMatchPct } from "@/lib/pay/tsp-pacing";
 
 /** Numeric rank within a track ("E-5" → 5) for floor/ceiling comparisons. */
 export function gradeNumber(grade: string): number {
@@ -251,7 +251,20 @@ export type CareerProjection = {
   promotions: PromotionEvent[];
   /** Months from now until separation. */
   separationMonth: number;
-  totals: { contributed: number; growth: number; agencyMatch: number; employeeTsp: number };
+  totals: {
+    contributed: number;
+    growth: number;
+    /** All agency dollars: Service Automatic 1% + Service Matching. */
+    agencyMatch: number;
+    employeeTsp: number;
+    /**
+     * Matching dollars forfeited because the election ran into the annual
+     * elective-deferral limit before December, leaving months with nothing
+     * contributed and therefore nothing matched. The automatic 1% is never
+     * part of this — it keeps arriving. 0 when nothing is front-loaded.
+     */
+    matchForfeited: number;
+  };
   /** Monthly series for the pay/rank chart: base pay + grade per month while serving. */
   payTimeline: { monthIndex: number; grade: string; basePayMonthly: number; tspMonthly: number }[];
 };
@@ -292,6 +305,11 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
   let contributed = tsp + invest + savings + ira;
   let agencyMatch = 0;
   let employeeTsp = 0;
+  let matchForfeited = 0;
+  // Employee TSP deferrals inside the current calendar year. The sim treats
+  // monthIndex 0 as January, so this resets every 12 months — the same
+  // boundary the year snapshots use.
+  let tspDeferredThisYear = 0;
 
   const promotions = i.modelPromotions
     ? upcomingPromotions(i.branch, i.track, i.currentGrade, i.currentYosYears, serviceYears)
@@ -311,6 +329,10 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
     // Age during this month, for the IRA/401(k) contribution-stop ages.
     const ageNow = i.currentAge + m / 12;
 
+    // January: the elective-deferral limit resets and the deferral stops that
+    // ran to the end of December are lifted.
+    if (m % 12 === 0) tspDeferredThisYear = 0;
+
     let contribution = 0;
 
     if (serving) {
@@ -327,11 +349,28 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       lastGrade = grade;
       lastBasePay = basePay;
 
-      const employee = Math.min(
-        Math.max(0, i.tspPct) * basePay,
-        TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
-      );
-      const agency = i.brs ? brsAgencyPct(Math.max(0, i.tspPct)) * basePay : 0;
+      // Real year-to-date accounting, not an even monthly cap. TSP stops the
+      // deferral the moment the calendar year's limit is reached, so a high
+      // percent contributes the elected amount until the room runs out and
+      // then nothing at all for the rest of that year.
+      const electedPct = Number.isFinite(i.tspPct) ? Math.max(0, i.tspPct) : 0;
+      const room = Math.max(0, TSP_ELECTIVE_DEFERRAL_LIMIT_2026 - tspDeferredThisYear);
+      const employee = Math.min(electedPct * basePay, room);
+      tspDeferredThisYear += employee;
+
+      // The match follows what ACTUALLY went in this month, not the election:
+      // a truncated final contribution still earns its tier, and a stopped
+      // month earns nothing. The Service Automatic 1% continues either way.
+      const actualPct = basePay > 0 ? employee / basePay : 0;
+      const automatic = i.brs ? BRS_AUTOMATIC_PCT * basePay : 0;
+      const match = i.brs ? brsMatchPct(actualPct) * basePay : 0;
+      const agency = automatic + match;
+
+      // What the same election would have matched had it been paced to last
+      // the year. The gap is the front-loading loss, and it is permanent —
+      // missed matching is not made up later.
+      const matchIfPaced = i.brs ? brsMatchPct(electedPct) * basePay : 0;
+      matchForfeited += Math.max(0, matchIfPaced - match);
 
       const iraContrib = ageNow < iraUntilAge ? iraMonthly : 0;
 
@@ -405,6 +444,7 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       growth: final.total - contributed,
       agencyMatch,
       employeeTsp,
+      matchForfeited,
     },
     payTimeline,
   };

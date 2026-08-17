@@ -2,6 +2,7 @@
 
 import { fmtUSD0 } from "@/lib/sankey/model";
 import InfoDot from "@/components/InfoDot";
+import { MiniButton } from "@/components/projector/Field";
 
 // The gain/loss colours the projector already uses for its trade-space deltas
 // (see the next-PCS rows) — amber for worse, green for better.
@@ -30,6 +31,14 @@ export type TuneControl = {
   disabledReason?: string;
   /** InfoDot copy, when the control needs one. */
   info?: string;
+  /**
+   * An amber line under the control when the current value costs the member
+   * money — e.g. a TSP percent that hits the annual limit before December and
+   * forfeits the match for the stopped months.
+   */
+  warning?: string;
+  /** One-click correction offered alongside the warning. */
+  fix?: { label: string; title?: string; onClick: () => void };
   ariaLabel: string;
 };
 
@@ -168,6 +177,16 @@ export default function TuneStrip({
               </div>
               {c.disabled && c.disabledReason && (
                 <p className="mt-1.5 text-xs text-gray-400">{c.disabledReason}</p>
+              )}
+              {!c.disabled && c.warning && (
+                <p className="mt-1.5 text-xs leading-5 text-amber-700">{c.warning}</p>
+              )}
+              {!c.disabled && c.fix && (
+                <div className="mt-1.5">
+                  <MiniButton onClick={c.fix.onClick} title={c.fix.title}>
+                    {c.fix.label}
+                  </MiniButton>
+                </div>
               )}
             </div>
           );

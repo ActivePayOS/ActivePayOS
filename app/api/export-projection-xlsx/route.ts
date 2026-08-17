@@ -210,6 +210,83 @@ function addChartRecipeSheet(wb: ExcelJS.Workbook, lastRow: number) {
   );
 }
 
+// One palette for the whole workbook, so the sheets read as one document.
+const EDITABLE_ARGB = "FFFFF3C4"; // amber — the cells the member owns
+const COMPUTED_ARGB = "FFEFF3F8"; // pale slate — formula results
+const HEADER_ARGB = "FFE2E8F0"; // slate — column and section headings
+const MUTED_ARGB = "FF6B7280";
+const RULE_ARGB = "FFCBD5E1";
+
+const thinBorder = {
+  top: { style: "thin" as const, color: { argb: RULE_ARGB } },
+  left: { style: "thin" as const, color: { argb: RULE_ARGB } },
+  bottom: { style: "thin" as const, color: { argb: RULE_ARGB } },
+  right: { style: "thin" as const, color: { argb: RULE_ARGB } },
+};
+
+/** Tab colours group the sheets: inputs, data, analysis, help. */
+const TAB_COLOURS: Record<string, string> = {
+  Summary: "FF1D4ED8",
+  "Read me": "FF94A3B8",
+  Assumptions: "FFD97706",
+  Projection: "FF0F766E",
+  "Trade space": "FF7C3AED",
+  "Build a chart": "FF94A3B8",
+};
+
+/**
+ * Colour legend, appended below whatever a sheet already contains, so "yellow
+ * means you can change it" is stated rather than left to be inferred. Appends
+ * rather than writing fixed rows, because the sheet owns its own layout.
+ */
+function appendColourLegend(ws: ExcelJS.Worksheet) {
+  let r = ws.rowCount + 2;
+  const title = ws.getRow(r).getCell(1);
+  title.value = "What the colours mean";
+  title.font = { bold: true, size: 12 };
+  r += 1;
+
+  const legend: [string, string, string][] = [
+    [
+      "Change me",
+      EDITABLE_ARGB,
+      "Yellow cells on the Assumptions tab are yours to edit — everything else recalculates from them.",
+    ],
+    [
+      "Calculated",
+      COMPUTED_ARGB,
+      "A formula result. Typing over one replaces the formula, so the workbook stops updating.",
+    ],
+    ["Heading", HEADER_ARGB, "Section titles and column headers."],
+  ];
+
+  for (const [label, argb, why] of legend) {
+    const row = ws.getRow(r);
+    const swatch = row.getCell(1);
+    swatch.value = label;
+    swatch.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
+    swatch.font = { size: 10, bold: true };
+    swatch.alignment = { horizontal: "center" };
+    swatch.border = thinBorder;
+    const text = row.getCell(2);
+    text.value = why;
+    text.font = { color: { argb: MUTED_ARGB }, size: 10 };
+    r += 1;
+  }
+}
+
+/** Bold, filled, frozen header row — applied to every tabular sheet. */
+function styleHeaderRow(ws: ExcelJS.Worksheet, row = 1) {
+  const r = ws.getRow(row);
+  r.font = { bold: true };
+  r.eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_ARGB } };
+    cell.border = thinBorder;
+    cell.alignment = { vertical: "middle" };
+  });
+  r.height = 18;
+}
+
 export async function POST(req: NextRequest) {
   const lengthHeader = req.headers.get("content-length");
   if (lengthHeader && Number(lengthHeader) > MAX_BODY_BYTES) {
@@ -328,6 +405,7 @@ export async function POST(req: NextRequest) {
   // reference those sheets, so the Summary stays live too).
   const summary = wb.addWorksheet("Summary");
   summary.columns = [{ width: 34 }, { width: 18 }, { width: 76 }];
+
 
   // ---------------------------------------------------------------- Read me
   const readme = wb.addWorksheet("Read me");
@@ -660,6 +738,19 @@ export async function POST(req: NextRequest) {
   // redraw themselves when the yellow inputs change, and they work in Google
   // Sheets and LibreOffice too, where an embedded PNG is only ever a picture.
   addChartRecipeSheet(wb, p.projectionYears + 2);
+
+  // Colour the tabs and style the header rows once, at the end, so every sheet
+  // gets the same treatment however it was built.
+  for (const ws of wb.worksheets) {
+    const tab = TAB_COLOURS[ws.name];
+    if (tab) ws.properties.tabColor = { argb: tab };
+    if (ws.name === "Projection") styleHeaderRow(ws);
+  }
+  const readmeSheet = wb.getWorksheet("Read me");
+  if (readmeSheet) {
+    readmeSheet.getColumn(2).width = 86;
+    appendColourLegend(readmeSheet);
+  }
 
   const buffer = await wb.xlsx.writeBuffer();
   const filename = `activepayos_WealthModel_${p.grade}_${p.startYear + p.projectionYears}.xlsx`;

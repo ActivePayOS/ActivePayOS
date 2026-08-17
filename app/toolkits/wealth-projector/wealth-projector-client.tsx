@@ -462,7 +462,11 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [stackedLayout, setStackedLayout] = useState(true);
 
   // ---- Exports (csv/txt/pdf in-browser; xlsx via the stateless route) ----
-  const [reportFormat, setReportFormat] = useState<ReportFormat>("csv");
+  // Excel by default: it is the only format that carries the analysis as
+  // separate tabs with the editable inputs colour-coded and the formulas live.
+  // CSV is one flat table by definition — it cannot show any of that, and
+  // defaulting to it meant most people never saw the workbook at all.
+  const [reportFormat, setReportFormat] = useState<ReportFormat>("xlsx");
   const [reportScope, setReportScope] = useState<"standard" | "longterm">("standard");
   const [reportSections, setReportSections] = useState<string[]>(["projection"]);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -3493,10 +3497,10 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                   selectedSections={reportSections}
                   onSectionsChange={setReportSections}
                   formats={[
-                    { value: "csv", label: "CSV — any spreadsheet" },
-                    { value: "xlsx", label: "Excel — live model (edit & recalc)" },
-                    { value: "txt", label: "Text — plain summary" },
+                    { value: "xlsx", label: "Excel — tabs, editable inputs, live formulas" },
                     { value: "pdf", label: "PDF — printable, with chart" },
+                    { value: "csv", label: "CSV — plain text, one flat table" },
+                    { value: "txt", label: "Text — plain summary" },
                     { value: "all", label: "Everything (.zip)" },
                   ]}
                   format={reportFormat}

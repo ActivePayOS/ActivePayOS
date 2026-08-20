@@ -6,6 +6,11 @@ import Link from "next/link";
 import PlanFlow from "@/components/PlanFlow";
 import { mapPayBranch, mapPayGrade, savePaySnapshot } from "@/lib/profile/handoff";
 import { getBahLookup } from "@/lib/pay/bah";
+import {
+  calculateOconusAllowances,
+  OCONUS_COLA_SOURCE,
+  OCONUS_RATE_SOURCE,
+} from "@/lib/pay/oconus";
 import SankeySvg from "@/components/sankey/SankeySvg";
 import { useThemeColors, type ThemeColors } from "@/components/sankey/useThemeColors";
 import { buildFlowGraph } from "@/lib/sankey/model";
@@ -273,6 +278,40 @@ function fmtWholeUSD(v: number | null | undefined) {
     : "-";
 }
 
+function MoneyField({
+  label,
+  value,
+  disabled,
+  info,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled?: boolean;
+  info?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="text-sm font-medium">
+      {label} {info && <InfoDot text={info} />}
+      <span className="relative mt-1 block">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">$</span>
+        <input
+          type="number"
+          min={0}
+          max={100000}
+          step="0.01"
+          inputMode="decimal"
+          className="field w-full rounded-xl py-2 pl-7 pr-3"
+          value={value || ""}
+          disabled={disabled}
+          onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+        />
+      </span>
+    </label>
+  );
+}
+
 // Month names for the TSP pacing warning — the pacing engine returns a 1-based
 // calendar month.
 const TSP_MONTH_NAMES = [
@@ -364,6 +403,11 @@ export default function PayClient({
   const [branch, setBranch] = useState<BranchId | "">("");
   const [yos, setYos] = useState<number>(0);
   const [zip, setZip] = useState<string>("");
+  const [stationMode, setStationMode] = useState<"stateside" | "oconus">("stateside");
+  const [oconusLocation, setOconusLocation] = useState("");
+  const [ohaRentMonthly, setOhaRentMonthly] = useState(0);
+  const [ohaUtilitiesMonthly, setOhaUtilitiesMonthly] = useState(0);
+  const [oconusColaMonthly, setOconusColaMonthly] = useState(0);
   const [receivesBah, setReceivesBah] = useState<boolean>(true);
   // Family size includes the member. BAH pays the "with dependents" rate when
   // the member has at least one dependent (family size of 2 or more).
@@ -476,10 +520,27 @@ export default function PayClient({
     [zip, grade, dependents]
   );
   const bahRate = bahLookup.rate;
-  const bah = effectiveReceivesBah ? bahRate : 0;
+  const oconusAllowances = useMemo(
+    () =>
+      calculateOconusAllowances({
+        location: oconusLocation,
+        ohaRentMonthlyUsd: ohaRentMonthly,
+        ohaUtilitiesMonthlyUsd: ohaUtilitiesMonthly,
+        colaMonthlyUsd: oconusColaMonthly,
+      }),
+    [oconusLocation, ohaRentMonthly, ohaUtilitiesMonthly, oconusColaMonthly]
+  );
+  const housingAllowanceLabel = stationMode === "oconus" ? "OHA" : "BAH";
+  const dutyLocationLabel =
+    stationMode === "oconus" ? oconusAllowances.location : bahLookup.normalizedZip ?? "";
+  const bah = effectiveReceivesBah
+    ? stationMode === "oconus"
+      ? oconusAllowances.housingMonthlyUsd
+      : bahRate
+    : 0;
 
   const bahError = useMemo(() => {
-    if (!effectiveReceivesBah) return null;
+    if (!effectiveReceivesBah || stationMode === "oconus") return null;
     if (!zip || zip.trim().length === 0) return null;
     if (bahLookup.status === "ok") return null;
     if (bahLookup.status === "invalid_zip") {
@@ -489,7 +550,7 @@ export default function PayClient({
       return "This ZIP is in the official 2026 ZIP-to-MHA file, but it maps to a non-standard area that is not in the local BAH rate table. Standard BAH may not apply; check OHA/non-locality guidance or your finance office.";
     }
     return "This ZIP is not available in the 2026 local BAH rate data used here. Check the ZIP, try ZIP+4 only if valid, or verify with the official BAH calculator.";
-  }, [effectiveReceivesBah, zip, bahLookup.status]);
+  }, [effectiveReceivesBah, stationMode, zip, bahLookup.status]);
 
   // Where you're stationed, for the state-tax analysis. Defaults to the state
   // the BAH ZIP resolves to (MHA codes start with the state abbreviation);
@@ -499,7 +560,8 @@ export default function PayClient({
     const ab = bahLookup.mha?.slice(0, 2);
     return stateTaxContexts.find((s) => s.abbreviation === ab)?.state ?? "";
   }, [bahLookup.mha]);
-  const dutyLocation = dutyLocationOverride || dutyStateFromZip;
+  const dutyLocation =
+    dutyLocationOverride || (stationMode === "oconus" ? OCONUS : dutyStateFromZip);
   const stationAnalysis = useMemo(
     () =>
       stateOfLegalResidence && dutyLocation
@@ -509,7 +571,9 @@ export default function PayClient({
   );
 
   const specialTaxable = specialPays.reduce((a, s) => a + (s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
-  const specialNonTax = specialPays.reduce((a, s) => a + (!s.taxable && s.monthly > 0 ? s.monthly : 0), 0);
+  const specialNonTax =
+    specialPays.reduce((a, s) => a + (!s.taxable && s.monthly > 0 ? s.monthly : 0), 0) +
+    (stationMode === "oconus" ? oconusAllowances.colaMonthlyUsd : 0);
   const specialTotal = specialTaxable + specialNonTax;
 
   const branchInfo = getBranch(branch);
@@ -557,8 +621,13 @@ export default function PayClient({
       grossMonthly: total,
       zip: bahLookup.normalizedZip ?? undefined,
       dependents,
+      stationMode,
+      oconusLocation: stationMode === "oconus" ? oconusAllowances.location : undefined,
+      ohaMonthly: stationMode === "oconus" ? oconusAllowances.housingMonthlyUsd : undefined,
+      oconusColaMonthly:
+        stationMode === "oconus" ? oconusAllowances.colaMonthlyUsd : undefined,
     });
-  }, [gradeSelected, grade, branch, yos, tspPct, total, bahLookup.normalizedZip, dependents]);
+  }, [gradeSelected, grade, branch, yos, tspPct, total, bahLookup.normalizedZip, dependents, stationMode, oconusAllowances]);
 
   const denomTotal = total > 0 ? total : 1;
   const pctBase = (basePay / denomTotal) * 100;
@@ -572,10 +641,12 @@ export default function PayClient({
     const p: { label: string; value: number | null; hint: string }[] = [
       { label: "Base Pay", value: basePay, hint: "Taxable. From DFAS pay tables (grade + YOS)." },
       {
-        label: "BAH",
+        label: housingAllowanceLabel,
         value: bah,
         hint: effectiveReceivesBah
-          ? "Usually non-taxable. From DTMO (ZIP + dependent status)."
+          ? stationMode === "oconus"
+            ? "Usually non-taxable. OHA rent reimbursement plus utilities, entered from DTMO or your LES."
+            : "Usually non-taxable. From DTMO (ZIP + dependent status)."
           : cadet
           ? "Cadets/midshipmen receive housing in kind, so no BAH is added."
           : "Set to $0 because barracks/government housing is selected.",
@@ -593,7 +664,7 @@ export default function PayClient({
     ];
     const sum = p.reduce((a, x) => a + (x.value ?? 0), 0);
     return { p, sum };
-  }, [basePay, bah, basRate, effectiveReceivesBah, cadet, specialTotal]);
+  }, [basePay, bah, basRate, effectiveReceivesBah, cadet, specialTotal, housingAllowanceLabel, stationMode]);
 
   const yosLabel = useMemo(() => {
     const found = YOS_OPTIONS.find((o) => o.value === yos);
@@ -805,9 +876,6 @@ export default function PayClient({
   // in localStorage (nothing leaves the browser) and the Budget page offers to
   // import it, choosing combined vs. by-source income there.
   function sendToBudget() {
-    const zip5 = effectiveReceivesBah
-      ? String(zip ?? "").trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1]
-      : undefined;
     const transfer: PayTransfer = {
       v: 1,
       generatedOn: new Date().toISOString().slice(0, 10),
@@ -815,10 +883,16 @@ export default function PayClient({
         year,
         grade,
         yosLabel,
-        location: effectiveReceivesBah ? zip5 ?? "-" : "No BAH / barracks",
+        location:
+          stationMode === "oconus"
+            ? dutyLocationLabel || "-"
+            : effectiveReceivesBah
+              ? dutyLocationLabel || "-"
+              : "Government quarters / no housing allowance",
         dependents,
         stateOfLegalResidence: stateOfLegalResidence || "Not selected",
         receivesBah: effectiveReceivesBah,
+        housingAllowanceLabel,
       },
       income: {
         base: basePay,
@@ -826,7 +900,12 @@ export default function PayClient({
         bas: basRate,
         specials: specialPays
           .filter((s) => s.monthly > 0)
-          .map((s) => ({ label: s.label, monthly: s.monthly })),
+          .map((s) => ({ label: s.label, monthly: s.monthly }))
+          .concat(
+            stationMode === "oconus" && oconusAllowances.colaMonthlyUsd > 0
+              ? [{ label: "OCONUS COLA", monthly: oconusAllowances.colaMonthlyUsd }]
+              : []
+          ),
       },
       deductions: {
         federal: takeHome.federalTaxMonthly,
@@ -866,6 +945,8 @@ export default function PayClient({
       grade,
       yosLabel,
       zip5,
+      locationLabel: stationMode === "oconus" ? dutyLocationLabel || undefined : undefined,
+      housingLabel: housingAllowanceLabel,
       receivesBah: effectiveReceivesBah,
       dependents,
       stateOfLegalResidence,
@@ -901,6 +982,9 @@ export default function PayClient({
       grade,
       yosLabel,
       zip: effectiveReceivesBah ? zip : "",
+      stationMode,
+      locationLabel: dutyLocationLabel,
+      housingLabel: housingAllowanceLabel,
       withDependents: dependents,
       receivesBah: effectiveReceivesBah,
       stateOfLegalResidence,
@@ -945,11 +1029,15 @@ export default function PayClient({
     const payOnly = includePay && sections.length === 1;
 
     // The pay report needs a resolvable BAH figure (or an explicit no-BAH pick).
-    if (includePay && effectiveReceivesBah && (!zip || zip.trim().length === 0)) {
+    if (
+      includePay &&
+      ((effectiveReceivesBah && stationMode === "stateside" && !zip.trim()) ||
+        (stationMode === "oconus" && !oconusAllowances.location))
+    ) {
       setExportError("Enter a duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet.");
       return;
     }
-    if (includePay && effectiveReceivesBah && bah === null) {
+    if (includePay && effectiveReceivesBah && stationMode === "stateside" && bah === null) {
       setExportError("Enter a valid duty ZIP code for BAH, or select Barracks / government housing (no BAH) before downloading the budget sheet.");
       return;
     }
@@ -960,7 +1048,7 @@ export default function PayClient({
       const liveSummary = includePay ? buildLivePaySummary(generatedOn) : undefined;
 
       const safeZip = effectiveReceivesBah
-        ? String(zip ?? "").trim().slice(0, 10).replace(/[^0-9-]/g, "")
+        ? String(dutyLocationLabel || "OCONUS").trim().slice(0, 30).replace(/[^A-Za-z0-9-]/g, "")
         : "NoBAH";
       const payStem = `activepayos_Pay_${safeZip || "ZIP"}_${grade}_${year}`;
       const workbookName = `activepayos_Budget_${safeZip || "ZIP"}_${grade}_${year}.xlsx`;
@@ -1124,6 +1212,8 @@ export default function PayClient({
             <p className="mt-2 text-xs text-gray-500">
               2026 base pay, BAS, and BAH data last verified on{" "}
               {formatPayDataLastVerified()}.
+              {stationMode === "oconus" &&
+                " OHA and OCONUS COLA use the current DTMO or LES amounts you enter below."}
             </p>
             <HoverHint className="mt-1" />
           </div>
@@ -1156,7 +1246,7 @@ export default function PayClient({
             </span>
 
             <span className="rounded-full border bg-gray-50 px-3 py-1 text-xs text-gray-700">
-              Data: Base Pay + BAS + BAH (Live)
+              Data: Base Pay + BAS + {stationMode === "oconus" ? "OHA + COLA" : "BAH"}
             </span>
           </div>
         </div>
@@ -1321,7 +1411,29 @@ export default function PayClient({
               </select>
             </div>
 
-            <div className={`grid gap-3 ${nestedInputGridClass}`}>
+            <div className="mt-5">
+              <span className="block text-sm font-medium">Duty station</span>
+              <div className="mt-2 inline-flex rounded-2xl border bg-gray-50 p-1" role="group" aria-label="Duty station type">
+                {(["stateside", "oconus"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={stationMode === mode}
+                    onClick={() => setStationMode(mode)}
+                    className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                      stationMode === mode
+                        ? "bg-white text-gray-950 shadow-sm ring-1 ring-black/5"
+                        : "text-gray-500 hover:text-gray-800"
+                    }`}
+                  >
+                    {mode === "stateside" ? "U.S. / BAH" : "Overseas / OCONUS"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={`mt-4 grid gap-3 ${nestedInputGridClass}`}>
+              {stationMode === "stateside" ? (
               <div className={!receivesBah ? "opacity-60" : ""}>
                 <label htmlFor="duty-zip" className="block text-sm font-medium">
                   Duty ZIP (for BAH){" "}
@@ -1341,6 +1453,39 @@ export default function PayClient({
                   </p>
                 )}
               </div>
+              ) : (
+                <div className="rounded-2xl border bg-gray-50/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold">Current overseas allowances</div>
+                      <p className="mt-1 max-w-xl text-xs leading-5 text-gray-500">
+                        Enter the monthly USD amounts from the DTMO calculators or your LES. OHA is reimbursement up to your authorized amount—not a flat housing payment.
+                      </p>
+                    </div>
+                    <span className="rounded-full border bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600">
+                      Use current pay-period figures
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm font-medium sm:col-span-2">
+                      Duty location{" "}
+                      <InfoDot text="Use the locality shown by DTMO or your LES—not an APO/FPO mailing ZIP. ActivePayOS stores this only in your browser." />
+                      <input
+                        className="field mt-1 w-full rounded-xl px-3 py-2"
+                        placeholder="e.g., Ramstein, Germany"
+                        value={oconusLocation}
+                        onChange={(e) => setOconusLocation(e.target.value)}
+                      />
+                    </label>
+                    <MoneyField label="OHA rent reimbursement / month" info="Enter the monthly USD rent amount the official DTMO calculator returns using your authorized locality, grade, dependency status, and actual rent. OHA reimburses actual rent only up to the ceiling." value={ohaRentMonthly} disabled={!receivesBah} onChange={setOhaRentMonthly} />
+                    <MoneyField label="OHA utilities / month" info="Enter the recurring utilities/maintenance amount shown by DTMO or your LES. If utilities are included in rent, your authorized treatment can differ—use the official result." value={ohaUtilitiesMonthly} disabled={!receivesBah} onChange={setOhaUtilitiesMonthly} />
+                    <MoneyField label="OCONUS COLA / month" info="COLA is separate from housing and may still apply in government quarters. Enter the current monthly USD result for your locality, grade, years of service, barracks status, and dependent count." value={oconusColaMonthly} onChange={setOconusColaMonthly} />
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-gray-500">
+                    Use the official <a className="underline" href={OCONUS_RATE_SOURCE} target="_blank" rel="noreferrer">OHA lookup</a> and <a className="underline" href={OCONUS_COLA_SOURCE} target="_blank" rel="noreferrer">COLA lookup</a>. Do not include one-time MIHA here.
+                  </p>
+                </div>
+              )}
 
               <div className="mt-6 space-y-3 text-sm">
                 {cadet ? (
@@ -1358,15 +1503,15 @@ export default function PayClient({
                         onChange={(e) => setReceivesBah(!e.target.checked)}
                       />
                       <span>
-                        Barracks / government housing (no BAH){" "}
-                        <InfoDot text="Select this if you do not receive BAH. Pay totals and the budget sheet will use $0 for housing allowance." />
+                        Barracks / government housing (no housing allowance){" "}
+                        <InfoDot text="Select this if you do not receive BAH or OHA. COLA can still apply overseas, so enter it above before selecting government housing." />
                       </span>
                     </label>
 
                     <div className={!receivesBah ? "opacity-60" : ""}>
                       <label htmlFor="family-size" className="block text-sm font-medium">
                         Family size, including yourself{" "}
-                        <InfoDot text="2 or more uses the BAH with-dependents rate; 1 uses the without-dependents rate. The rate doesn't change further with family size." />
+                        <InfoDot text={stationMode === "oconus" ? "Use your actual dependent count when obtaining the official OHA and COLA amounts." : "2 or more uses the BAH with-dependents rate; 1 uses the without-dependents rate. The rate doesn't change further with family size."} />
                       </label>
                       <input
                         id="family-size"

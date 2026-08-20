@@ -30,6 +30,8 @@ export type BuildSummaryArgs = {
   grade: string;
   yosLabel: string;
   zip5?: string;
+  locationLabel?: string;
+  housingLabel?: "BAH" | "OHA";
   receivesBah: boolean;
   dependents: boolean;
   stateOfLegalResidence: string;
@@ -47,9 +49,15 @@ function line(label: string, monthly: number): PayLine {
 }
 
 export function buildPaySummary(args: BuildSummaryArgs): PaySummary {
+  const housingLabel = args.housingLabel ?? "BAH";
   const lines: PayLine[] = [
     line("Base Pay", args.baseMonthly),
-    line(args.receivesBah ? "BAH (housing allowance)" : "BAH (none - barracks)", args.bahMonthly),
+    line(
+      args.receivesBah
+        ? `${housingLabel} (housing allowance)`
+        : `${housingLabel} (none - government quarters)`,
+      args.bahMonthly
+    ),
     line("BAS (food allowance)", args.basMonthly),
   ];
 
@@ -65,7 +73,9 @@ export function buildPaySummary(args: BuildSummaryArgs): PaySummary {
     year: args.year,
     grade: args.grade || "-",
     yosLabel: args.yosLabel || "-",
-    location: args.receivesBah ? args.zip5 ?? "-" : "No BAH / barracks",
+    location:
+      args.locationLabel ??
+      (args.receivesBah ? args.zip5 ?? "-" : "Government quarters / no housing allowance"),
     dependents: args.dependents,
     stateOfLegalResidence: args.stateOfLegalResidence || "Not selected",
     receivesBah: args.receivesBah,

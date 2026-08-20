@@ -423,6 +423,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
   const [pcsCurrentZip, setPcsCurrentZip] = useState(() => paySnap?.zip ?? "");
   const [pcsDeps, setPcsDeps] = useState(() => paySnap?.dependents ?? false);
   const [pcsCandidates, setPcsCandidates] = useState<string[]>(["", "", ""]);
+  const currentStationIsOconus = paySnap?.stationMode === "oconus";
 
   // ---- "Use your budget" contribution assignments ----
   const [candidates] = useState(() => budgetContributionCandidates(loadSavedBudgetRaw()));
@@ -3147,6 +3148,20 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                         />
                       </div>
 
+                      {currentStationIsOconus && (
+                        <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">
+                          <div className="font-semibold">
+                            Current station: {paySnap?.oconusLocation || "Overseas / OCONUS"}
+                          </div>
+                          <p className="mt-1">
+                            Your Pay Calculator snapshot includes {fmtUSD0(paySnap?.ohaMonthly ?? 0)}/mo OHA
+                            {paySnap?.oconusColaMonthly
+                              ? ` and ${fmtUSD0(paySnap.oconusColaMonthly)}/mo OCONUS COLA`
+                              : ""}. These current allowances stay in pay and budget reports, but are not projected forward because rent reimbursement, locality rates, and exchange rates can change each pay period.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-600">
                         <span>PCS in</span>
                         <input
@@ -3168,7 +3183,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                               </Explain>
                             </>
                           )}
-                          {" · from ZIP"}
+                          {currentStationIsOconus ? " · compare from a U.S. ZIP" : " · from ZIP"}
                         </span>
                         <input
                           value={pcsCurrentZip}
@@ -3189,7 +3204,9 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
 
                       {!pcsTrade ? (
                         <p className="mt-2 text-xs text-gray-500">
-                          Enter your current duty ZIP to compare candidate stations.
+                          {currentStationIsOconus
+                            ? "For a stateside BAH comparison, enter the U.S. ZIP you want as the baseline. OHA and COLA are not treated as BAH."
+                            : "Enter your current duty ZIP to compare candidate stations."}
                         </p>
                       ) : pcsTrade.current.rate == null ? (
                         <p className="mt-2 text-xs text-amber-700">

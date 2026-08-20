@@ -42,6 +42,13 @@ const dataSources = [
     href: "https://militarypay.defense.gov/PAY/Allowances/bah.aspx",
   },
   {
+    name: "OCONUS allowances",
+    status: "Member verified",
+    source:
+      "OHA and OCONUS COLA are entered from the current DTMO calculators or the member's LES; ActivePayOS does not cache volatile exchange-rate results as guaranteed pay",
+    href: "https://www.travel.dod.mil/Allowances/Overseas-Housing-Allowance/OHA-Rate-Lookup/",
+  },
+  {
     name: "FICA",
     status: "Estimated",
     source: "Social Security and Medicare payroll tax rates applied to base pay",
@@ -173,7 +180,7 @@ export default function AccuracyPage() {
           <ul className="mt-5 list-disc space-y-3 pl-5 text-sm leading-6 text-gray-600">
             <li>Federal and state income tax are annualized estimates (standard deduction, no credits, flat state rate) — actual withholding depends on your W-4 and state rules.</li>
             <li>Allotments, debts, meal deductions, and garnishments are not modeled; special pays, TSP, and SGLI are included only when you add them in the calculator.</li>
-            <li>Overseas housing, OHA, COLA, and some territory or non-standard ZIP cases may not use standard local BAH.</li>
+            <li>OCONUS estimates use the current monthly OHA and COLA amounts you enter from DTMO or your LES. Currency and station allowances can change each pay period.</li>
             <li>Your LES, orders, myPay settings, DFAS, and official finance guidance control over any estimate shown here.</li>
           </ul>
         </div>

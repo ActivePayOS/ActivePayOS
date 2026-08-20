@@ -67,6 +67,30 @@ describe("buildBudgetFromTransfer", () => {
     expect(byLabel["Groceries"]).toBe(477);
   });
 
+  it("labels overseas housing as OHA and carries COLA as its own income", () => {
+    const overseas: PayTransfer = {
+      ...TRANSFER,
+      meta: {
+        ...TRANSFER.meta,
+        location: "Ramstein, Germany",
+        housingAllowanceLabel: "OHA",
+      },
+      income: {
+        ...TRANSFER.income,
+        bah: 2450,
+        specials: [{ label: "OCONUS COLA", monthly: 325 }],
+      },
+    };
+    const { income, expenses } = buildBudgetFromTransfer(overseas, "bysource");
+    expect(income.map((row) => row.label)).toEqual([
+      "Base Pay",
+      "OHA",
+      "BAS",
+      "OCONUS COLA",
+    ]);
+    expect(expenses.find((row) => row.label === "Housing")?.amount).toBe(2450);
+  });
+
   it("models deductions as expense rows so leftover nets to take-home", () => {
     const { expenses } = buildBudgetFromTransfer(TRANSFER, "combined");
     const labels = expenses.map((r) => r.label);

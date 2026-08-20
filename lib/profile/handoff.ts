@@ -31,6 +31,13 @@ export type PaySnapshot = {
   zip?: string;
   /** BAH with-dependents status from the calculator's family-size input. */
   dependents?: boolean;
+  /** Duty-station allowance mode. Older snapshots omit this and remain stateside. */
+  stationMode?: "stateside" | "oconus";
+  /** Human-readable overseas duty location (no address is stored). */
+  oconusLocation?: string;
+  /** Current recurring monthly allowances copied from DTMO/LES. */
+  ohaMonthly?: number;
+  oconusColaMonthly?: number;
 };
 
 // Pay Calculator branch ids → promotion-timing branch ids.

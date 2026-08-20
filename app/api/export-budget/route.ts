@@ -18,6 +18,9 @@ type ExportPayload = {
   grade: string;
   yosLabel: string;
   zip?: string;
+  stationMode?: "stateside" | "oconus";
+  locationLabel?: string;
+  housingLabel?: "BAH" | "OHA";
   withDependents: boolean;
   receivesBah?: boolean;
   stateOfLegalResidence?: string;
@@ -107,9 +110,14 @@ export async function POST(req: NextRequest) {
   const year = Math.trunc(num(body.year, 2026));
 
   const receivesBah = body.receivesBah !== false;
+  const stationMode = body.stationMode === "oconus" ? "oconus" : "stateside";
   const zip5 = String(body.zip ?? "").trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1];
-  if (receivesBah && !zip5) {
+  const locationLabel = String(body.locationLabel ?? "").trim().slice(0, 100);
+  if (receivesBah && stationMode === "stateside" && !zip5) {
     return NextResponse.json({ error: "Invalid ZIP" }, { status: 400 });
+  }
+  if (stationMode === "oconus" && !locationLabel) {
+    return NextResponse.json({ error: "Invalid OCONUS location" }, { status: 400 });
   }
 
   const base = num(body.basePayMonthly);
@@ -139,6 +147,8 @@ export async function POST(req: NextRequest) {
       grade: body.grade ?? "",
       yosLabel: body.yosLabel ?? "",
       zip5,
+      locationLabel: stationMode === "oconus" ? locationLabel : undefined,
+      housingLabel: stationMode === "oconus" ? "OHA" : "BAH",
       receivesBah,
       dependents: !!body.withDependents,
       stateOfLegalResidence,
@@ -149,7 +159,7 @@ export async function POST(req: NextRequest) {
       generatedOn,
     });
 
-    const loc = receivesBah ? zip5 : "NoBAH";
+    const loc = receivesBah ? (stationMode === "oconus" ? locationLabel : zip5) : "NoHousing";
     const nameBase = `activepayos_Pay_${safeFilePart(loc, "loc")}_${safeFilePart(body.grade, "Pay")}_${year}`;
 
     try {
@@ -356,7 +366,12 @@ export async function POST(req: NextRequest) {
   start.getCell("B5").value = year;
   start.getCell("B6").value = body.grade ?? "";
   start.getCell("B7").value = body.yosLabel ?? "";
-  start.getCell("B8").value = receivesBah ? zip5 : "No BAH / barracks";
+  start.getCell("B8").value =
+    stationMode === "oconus"
+      ? `${locationLabel}${receivesBah ? "" : " (government quarters)"}`
+      : receivesBah
+        ? zip5
+        : "Government quarters / no housing allowance";
   start.getCell("B9").value = body.withDependents ? "TRUE" : "FALSE";
   start.getCell("B10").value = stateOfLegalResidence || "Not selected";
   start.getCell("B11").value = stateTaxPct; // decimal
@@ -400,7 +415,10 @@ export async function POST(req: NextRequest) {
 
   // Write output
   const out = await wb.xlsx.writeBuffer();
-  const filenameLocation = safeFilePart(receivesBah ? zip5 : "NoBAH", "loc");
+  const filenameLocation = safeFilePart(
+    receivesBah ? (stationMode === "oconus" ? locationLabel : zip5) : "NoHousing",
+    "loc"
+  );
   const filename = `activepayos_Budget_${filenameLocation}_${safeFilePart(body.grade, "Pay")}_${year}.xlsx`;
 
   return new NextResponse(out, {

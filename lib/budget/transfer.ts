@@ -30,6 +30,7 @@ export type PayTransfer = {
     dependents: boolean;
     stateOfLegalResidence: string;
     receivesBah: boolean;
+    housingAllowanceLabel?: "BAH" | "OHA";
   };
 
   // Gross monthly income components.
@@ -125,7 +126,7 @@ export function buildBudgetFromTransfer(
       : [
           { id: "t-inc-base", label: "Base Pay", amount: round0(inc.base) },
           ...(inc.bah > 0
-            ? [{ id: "t-inc-bah", label: "BAH", amount: round0(inc.bah) }]
+            ? [{ id: "t-inc-bah", label: t.meta.housingAllowanceLabel ?? "BAH", amount: round0(inc.bah) }]
             : []),
           ...(inc.bas > 0
             ? [{ id: "t-inc-bas", label: "BAS", amount: round0(inc.bas) }]

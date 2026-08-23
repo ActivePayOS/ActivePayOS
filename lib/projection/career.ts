@@ -25,7 +25,7 @@ import {
 } from "@/lib/pay/basepay-lookup";
 import { IRA_CONTRIBUTION_LIMIT_2026 } from "@/lib/pay/ira";
 import { TSP_ELECTIVE_DEFERRAL_LIMIT_2026 } from "@/lib/pay/tsp";
-import { BRS_AUTOMATIC_PCT, brsMatchPct } from "@/lib/pay/tsp-pacing";
+import { BRS_AUTOMATIC_PCT, brsEligibilityAtServiceMonth, brsMatchPct } from "@/lib/pay/tsp-pacing";
 
 /** Numeric rank within a track ("E-5" → 5) for floor/ceiling comparisons. */
 export function gradeNumber(grade: string): number {
@@ -483,14 +483,15 @@ export function projectCareerWealth(i: CareerProjectionInput): CareerProjection 
       // a truncated final contribution still earns its tier, and a stopped
       // month earns nothing. The Service Automatic 1% continues either way.
       const actualPct = basePay > 0 ? employee / basePay : 0;
-      const automatic = i.brs ? BRS_AUTOMATIC_PCT * basePay : 0;
-      const match = i.brs ? brsMatchPct(actualPct) * basePay : 0;
+      const brsEligibility = brsEligibilityAtServiceMonth(tisMonths);
+      const automatic = i.brs && brsEligibility.automatic ? BRS_AUTOMATIC_PCT * basePay : 0;
+      const match = i.brs && brsEligibility.matching ? brsMatchPct(actualPct) * basePay : 0;
       const agency = automatic + match;
 
       // What the same election would have matched had it been paced to last
       // the year. The gap is the front-loading loss, and it is permanent —
       // missed matching is not made up later.
-      const matchIfPaced = i.brs ? brsMatchPct(electedPct) * basePay : 0;
+      const matchIfPaced = i.brs && brsEligibility.matching ? brsMatchPct(electedPct) * basePay : 0;
       matchForfeited += Math.max(0, matchIfPaced - match);
 
       const iraContrib = ageNow < iraUntilAge ? iraMonthly : 0;

@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import PayClient from "./pay/pay-client";
 import { GITHUB_REPO } from "@/components/ContributeCTA";
 
-import basepay2026 from "@/data/basepay/2026.json";
-import bas2026 from "@/data/bas/2026.json";
+import { LATEST_VERIFIED_PAY_YEAR, PAY_YEAR_REGISTRY } from "@/data/pay-year-registry";
 
 export const metadata: Metadata = {
   title: "2026 Military Pay Calculator",
@@ -23,7 +22,7 @@ export default function Home() {
         <strong>ActivePayOS is open source and community-driven.</strong> We are looking for
         collaborators to build this alongside us — contribute or share feedback on GitHub →
       </a>
-      <PayClient initialYear={2026} basepay={basepay2026} bas={bas2026} />
+      <PayClient initialYear={LATEST_VERIFIED_PAY_YEAR} payYears={PAY_YEAR_REGISTRY} />
     </div>
   );
 }

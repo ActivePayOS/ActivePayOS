@@ -130,6 +130,33 @@ describe("projectCareerWealth", () => {
     expect(r.totals.agencyMatch).toBeCloseTo(expected / 2, 6);
   });
 
+  it("applies the BRS 1% after 60 days and starts matching in month 25", () => {
+    const firstYear = projectCareerWealth({
+      ...BASE,
+      currentGrade: "E-1",
+      currentYosYears: 0,
+      serviceYearsRemaining: 1,
+      projectionYears: 1,
+      modelPromotions: false,
+    });
+    const baseTotal = firstYear.payTimeline.reduce((sum, p) => sum + p.basePayMonthly, 0);
+    const automaticEligibleBase = firstYear.payTimeline
+      .filter((p) => p.monthIndex >= 2)
+      .reduce((sum, p) => sum + p.basePayMonthly, 0);
+    expect(firstYear.totals.agencyMatch).toBeCloseTo(automaticEligibleBase * 0.01, 6);
+    expect(firstYear.final.balances.tsp).toBeCloseTo(baseTotal * 0.05 + automaticEligibleBase * 0.01, 6);
+
+    const month25 = projectCareerWealth({
+      ...BASE,
+      currentGrade: "E-3",
+      currentYosYears: 2,
+      serviceYearsRemaining: 1 / 12,
+      projectionYears: 1,
+      modelPromotions: false,
+    });
+    expect(month25.totals.agencyMatch).toBeCloseTo(month25.payTimeline[0].basePayMonthly * 0.05, 6);
+  });
+
   it("stops TSP contributions at separation but keeps compounding to the horizon", () => {
     const r = projectCareerWealth({
       ...BASE,

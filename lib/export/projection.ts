@@ -82,6 +82,8 @@ export type ProjectionExport = {
     branchLabel: string;
     track: string;
     grade: string;
+    /** Official base-pay table used as the projection baseline. */
+    payTableYear?: number;
     yos: number;
     currentAge: number;
     serviceYears: number;

@@ -35,8 +35,13 @@ import {
 } from "@/lib/projection/roth-tradeoff";
 import RothTradeChart, { ROTH_COLOR, TRAD_COLOR } from "@/components/charts/RothTradeChart";
 import ReportPanel from "@/components/ReportPanel";
-import { blendedAnnualReturn, brsAgencyPct, yearsToDouble } from "@/lib/projection/wealth";
-import { computeTspPacing } from "@/lib/pay/tsp-pacing";
+import { blendedAnnualReturn, yearsToDouble } from "@/lib/projection/wealth";
+import {
+  BRS_AUTOMATIC_PCT,
+  brsEligibilityAtServiceMonth,
+  brsMatchPct,
+  computeTspPacing,
+} from "@/lib/pay/tsp-pacing";
 import {
   gradeNumber,
   projectCareerWealth,
@@ -327,11 +332,25 @@ function BoxSwitch({
   );
 }
 
-export default function WealthProjectorClient({ basepay }: { basepay: BasePayDataset }) {
+export default function WealthProjectorClient({
+  payYears,
+  initialPayYear,
+}: {
+  payYears: Record<number, BasePayDataset>;
+  initialPayYear: number;
+}) {
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const [paySnap] = useState(loadPaySnapshot);
+  const availablePayYears = useMemo(
+    () => Object.keys(payYears).map(Number).sort((a, b) => b - a),
+    [payYears]
+  );
+  const [payYear, setPayYear] = useState(() =>
+    paySnap?.payYear && payYears[paySnap.payYear] ? paySnap.payYear : initialPayYear
+  );
+  const basepay = payYears[payYear] ?? payYears[availablePayYears[0]];
 
   // ---- Career (pre-filled from the Pay Calculator's snapshot when present) ----
-  const [paySnap] = useState(loadPaySnapshot);
   const [branch, setBranch] = useState<BranchId>(() => paySnap?.branch ?? "army");
   const [track, setTrack] = useState<Track>(() => paySnap?.track ?? "enlisted");
   const [grade, setGrade] = useState(() => paySnap?.grade ?? "E-4");
@@ -890,7 +909,12 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
     (basePayNow ?? 0) * contribPct,
     TSP_ELECTIVE_DEFERRAL_LIMIT_2026 / 12
   );
-  const agencyNow = brs ? (basePayNow ?? 0) * brsAgencyPct(contribPct) : 0;
+  const brsNow = brsEligibilityAtServiceMonth(yosEff * 12);
+  const agencyNow = brs
+    ? (basePayNow ?? 0) *
+      ((brsNow.automatic ? BRS_AUTOMATIC_PCT : 0) +
+        (brsNow.matching ? brsMatchPct(contribPct) : 0))
+    : 0;
 
   // Where this election lands across the year. Reaching the limit early does not
   // put more in — TSP stops the contributions, and the match is worked out on
@@ -1135,6 +1159,7 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
         branchLabel,
         track,
         grade,
+        payTableYear: payYear,
         yos: yosNow,
         currentAge,
         serviceYears,
@@ -1609,6 +1634,19 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold">Service &amp; horizon</h2>
               <FieldList>
+                <SelectRow
+                  label="Pay table year"
+                  value={String(payYear)}
+                  onChange={(v) => setPayYear(Number(v))}
+                  ariaLabel="Pay table year"
+                >
+                  {availablePayYears.map((availableYear) => (
+                    <option key={availableYear} value={availableYear}>
+                      {availableYear} official table
+                    </option>
+                  ))}
+                </SelectRow>
+
                 <SelectRow
                   label="My age today"
                   value={Math.round(currentAge)}
@@ -2204,7 +2242,8 @@ export default function WealthProjectorClient({ basepay }: { basepay: BasePayDat
                       checked={brs}
                       onChange={(e) => setBrs(e.target.checked)}
                     />
-                    BRS agency contributions (1% automatic + up to 4% match)
+                    BRS agency contributions (1% automatic + up to 4% match){" "}
+                    <InfoDot text="The automatic 1% begins after 60 days and vests after two years. Matching begins in the 25th month and is immediately vested: 100% on the first 3% you contribute and 50% on the next 2%. Contribute 5% to receive the full 4% match; with the automatic 1%, the service contributes 5%. Government contributions continue through the pay period in which you reach 26 years of service." />
                   </label>
                 </FieldList>
 

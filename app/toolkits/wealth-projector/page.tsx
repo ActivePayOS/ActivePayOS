@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import WealthProjectorClient from "./wealth-projector-client";
-import basepay2026 from "@/data/basepay/2026.json";
+import { LATEST_VERIFIED_PAY_YEAR, PAY_YEAR_REGISTRY } from "@/data/pay-year-registry";
 import type { BasePayDataset } from "@/lib/pay/basepay-lookup";
 
 export const metadata: Metadata = {
@@ -10,5 +10,8 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <WealthProjectorClient basepay={basepay2026 as unknown as BasePayDataset} />;
+  const payYears = Object.fromEntries(
+    Object.entries(PAY_YEAR_REGISTRY).map(([year, pack]) => [year, pack.basepay as unknown as BasePayDataset])
+  );
+  return <WealthProjectorClient payYears={payYears} initialPayYear={LATEST_VERIFIED_PAY_YEAR} />;
 }

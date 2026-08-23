@@ -98,8 +98,6 @@ function allowanceGradeFor(g: PayGrade): StandardGrade {
   return g;
 }
 
-const YEARS = [2026] as const;
-
 // The Hybrid/Stacked input layouts are built but disabled for now — flip this to
 // true to expose the Row/Hybrid/Stacked toggle again. Defaults to Row.
 const SHOW_LAYOUT_OPTIONS = false;
@@ -385,16 +383,21 @@ function getBasFromData(bas: BasData, year: number, grade: PayGrade): number {
 
 export default function PayClient({
   initialYear,
-  basepay,
-  bas,
+  payYears,
 }: {
   initialYear: number;
-  basepay: BasePayData;
-  bas: BasData;
+  payYears: Record<number, { basepay: BasePayData; bas: BasData; status: "verified" }>;
 }) {
   const router = useRouter();
-  const initialSupportedYear = YEARS.find((y) => y === initialYear) ?? YEARS[0];
-  const [year, setYear] = useState<(typeof YEARS)[number]>(initialSupportedYear);
+  const availableYears = useMemo(
+    () => Object.keys(payYears).map(Number).sort((a, b) => b - a),
+    [payYears]
+  );
+  const initialSupportedYear = availableYears.find((y) => y === initialYear) ?? availableYears[0];
+  const [year, setYear] = useState<number>(initialSupportedYear);
+  const selectedPayYear = payYears[year] ?? payYears[initialSupportedYear];
+  const basepay = selectedPayYear.basepay;
+  const bas = selectedPayYear.bas;
   // The select starts unselected ("Rank" placeholder); downstream math uses a
   // typed PayGrade fallback, but results/exports stay gated until a real pick.
   const [gradeChoice, setGradeChoice] = useState<PayGrade | "">("");
@@ -412,7 +415,8 @@ export default function PayClient({
   // Family size includes the member. BAH pays the "with dependents" rate when
   // the member has at least one dependent (family size of 2 or more).
   const [familySize, setFamilySize] = useState<number>(1);
-  const dependents = familySize >= 2;
+  const [bahWithDependents, setBahWithDependents] = useState(false);
+  const dependents = bahWithDependents;
   const [stateOfLegalResidence, setStateOfLegalResidence] = useState<string>("");
   const stateTaxContext = useMemo(
     () => getStateTaxContext(stateOfLegalResidence),
@@ -618,6 +622,7 @@ export default function PayClient({
       grade: mapped.grade,
       yos,
       tspPct,
+      payYear: year,
       grossMonthly: total,
       zip: bahLookup.normalizedZip ?? undefined,
       dependents,
@@ -627,7 +632,7 @@ export default function PayClient({
       oconusColaMonthly:
         stationMode === "oconus" ? oconusAllowances.colaMonthlyUsd : undefined,
     });
-  }, [gradeSelected, grade, branch, yos, tspPct, total, bahLookup.normalizedZip, dependents, stationMode, oconusAllowances]);
+  }, [gradeSelected, grade, branch, yos, tspPct, year, total, bahLookup.normalizedZip, dependents, stationMode, oconusAllowances]);
 
   const denomTotal = total > 0 ? total : 1;
   const pctBase = (basePay / denomTotal) * 100;
@@ -1313,9 +1318,9 @@ export default function PayClient({
                 id="pay-year"
                 className="field mt-1 w-full rounded-xl px-3 py-2"
                 value={year}
-                onChange={(e) => setYear(Number(e.target.value) as (typeof YEARS)[number])}
+                onChange={(e) => setYear(Number(e.target.value))}
               >
-                {YEARS.map((y) => (
+                {availableYears.map((y) => (
                   <option key={y} value={y}>
                     {y}
                   </option>
@@ -1509,9 +1514,24 @@ export default function PayClient({
                     </label>
 
                     <div className={!receivesBah ? "opacity-60" : ""}>
+                      <label htmlFor="bah-dependent-status" className="block text-sm font-medium">
+                        Housing allowance dependency status{" "}
+                        <InfoDot text="Use the dependency status authorized on your orders or LES. This is not the same as household size: dual-military spouses with no other dependent generally each receive the without-dependent rate, while only one member may receive the with-dependent rate for the same dependent." />
+                      </label>
+                      <select
+                        id="bah-dependent-status"
+                        className="field mt-1 w-full rounded-xl px-3 py-2 sm:w-64"
+                        value={bahWithDependents ? "with" : "without"}
+                        disabled={!receivesBah}
+                        onChange={(e) => setBahWithDependents(e.target.value === "with")}
+                      >
+                        <option value="without">Without-dependent rate</option>
+                        <option value="with">With-dependent rate</option>
+                      </select>
+
                       <label htmlFor="family-size" className="block text-sm font-medium">
                         Family size, including yourself{" "}
-                        <InfoDot text={stationMode === "oconus" ? "Use your actual dependent count when obtaining the official OHA and COLA amounts." : "2 or more uses the BAH with-dependents rate; 1 uses the without-dependents rate. The rate doesn't change further with family size."} />
+                        <InfoDot text="Used for household planning and overseas COLA inputs. BAH/OHA dependency entitlement is selected separately above because household size alone does not establish the authorized rate." />
                       </label>
                       <input
                         id="family-size"
@@ -1800,6 +1820,8 @@ export default function PayClient({
                 <p className="text-xs text-gray-500">
                   Flight, sea, jump, hazardous-duty, language, SDAP, and more. Amounts are editable
                   estimates and taxability varies — set the Taxable toggle to match your situation.
+                  Hostile Fire/Imminent Danger Pay defaults taxable because exclusion applies only
+                  when qualifying combat-zone rules are met.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <select
@@ -2730,7 +2752,8 @@ export default function PayClient({
               <div>
                 <div className="text-sm font-medium">State Tax Context</div>
                 <div className="mt-1 text-xs text-gray-500">
-                  Based on state of legal residence, not BAH duty ZIP.
+                  Based on state of legal residence, not BAH duty ZIP. Planning estimate reviewed
+                  for tax year {stateTaxContext?.reviewedTaxYear ?? 2026}.
                 </div>
               </div>
               <span className="w-fit rounded-full border bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700">
@@ -2767,6 +2790,16 @@ export default function PayClient({
                   >
                     State tax agency -&gt;
                   </a>
+                  {stateTaxContext.militaryTaxUrl && (
+                    <a
+                      href={stateTaxContext.militaryTaxUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium underline underline-offset-2 hover:text-gray-700"
+                    >
+                      Official military tax guidance -&gt;
+                    </a>
+                  )}
                   {stateTaxReferenceLinks.map((link) => (
                     <a
                       key={link.href}

@@ -25,6 +25,8 @@ export type PaySnapshot = {
   grade: string;
   yos: number;
   tspPct: number;
+  /** Official pay table year selected in the calculator. */
+  payYear?: number;
   /** Monthly gross from the calculator, for the journey strip summary. */
   grossMonthly?: number;
   /** Current duty ZIP (BAH) — seeds the projector's Next-PCS trade space. */

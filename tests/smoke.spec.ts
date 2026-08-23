@@ -1,4 +1,5 @@
-import { expect, test } from "playwright/test";
+import { existsSync } from "node:fs";
+import { chromium, expect, test } from "playwright/test";
 
 const budgetPayload = {
   year: 2026,
@@ -44,6 +45,24 @@ test("core pages and legacy pay redirect are available", async ({ request }) => 
   const pay = await request.get("/pay", { maxRedirects: 0 });
   expect(pay.status()).toBe(307);
   expect(pay.headers().location).toBe("/");
+});
+
+test("interactive pay and wealth pages load without browser errors", async ({ baseURL }) => {
+  const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+  const browser = await chromium.launch(existsSync(edgePath) ? { executablePath: edgePath } : {});
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+  });
+
+  await page.goto(`${baseURL}/`);
+  await expect(page.getByLabel("Year", { exact: true })).toHaveValue("2026");
+  await page.goto(`${baseURL}/toolkits/wealth-projector`);
+  await expect(page.getByLabel("Pay table year")).toHaveValue("2026");
+  expect(errors).toEqual([]);
+  await browser.close();
 });
 
 test("production security headers remain strict", async ({ request }) => {

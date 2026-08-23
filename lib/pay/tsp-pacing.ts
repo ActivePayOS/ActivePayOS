@@ -30,6 +30,22 @@ export const BRS_AUTOMATIC_PCT = 0.01;
 /** Most the service will match: 3% dollar-for-dollar + 2% at 50 cents = 4%. */
 export const BRS_MAX_MATCH_PCT = 0.04;
 
+/** Month-of-service gates from the DoD BRS policy (month 1 is service month 0). */
+export const BRS_AUTOMATIC_START_MONTH = 2; // after 60 days
+export const BRS_MATCH_START_MONTH = 24; // beginning of the 25th month
+export const BRS_GOVERNMENT_END_MONTH = 312; // through the pay period reaching 26 YOS
+
+export type BrsEligibility = { automatic: boolean; matching: boolean };
+
+/** Whether BRS government contributions apply at the start of a modeled month. */
+export function brsEligibilityAtServiceMonth(serviceMonth: number): BrsEligibility {
+  const month = Number.isFinite(serviceMonth) ? Math.max(0, Math.floor(serviceMonth)) : 0;
+  return {
+    automatic: month >= BRS_AUTOMATIC_START_MONTH && month <= BRS_GOVERNMENT_END_MONTH,
+    matching: month >= BRS_MATCH_START_MONTH && month <= BRS_GOVERNMENT_END_MONTH,
+  };
+}
+
 /**
  * Service Matching only (no automatic 1%), for a given share of base pay
  * actually contributed that month: 100% on the first 3%, 50% on the next 2%,

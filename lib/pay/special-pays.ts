@@ -2,8 +2,9 @@
 //
 // Representative monthly amounts and typical tax treatment — all editable by
 // the user, because most of these vary by service, grade, years, and location.
-// HFP/IDP is shown non-taxable (the common combat-zone case); the rest default
-// taxable. Figures are public Department of War / Department of Defense (DoD)
+// Pays default taxable unless they are ordinarily excluded. HFP/IDP is not
+// automatically tax-free: combat-zone exclusion depends on where/when served.
+// Figures are public Department of Defense (DoD)
 // and DFAS (FMR Vol. 7A) estimates.
 
 export type SpecialPay = {
@@ -26,7 +27,7 @@ export type SpecialPayPreset = {
 };
 
 export const SPECIAL_PAY_PRESETS: SpecialPayPreset[] = [
-  { label: "Hostile Fire / Imminent Danger Pay", monthly: 225, taxable: false },
+  { label: "Hostile Fire / Imminent Danger Pay", monthly: 225, taxable: true },
   // Raised from $250 effective 2025-12-18 (FY26 NDAA).
   { label: "Family Separation Allowance (FSA)", monthly: 300, taxable: false },
   { label: "Flight Pay (ACIP / HDIP-air)", monthly: 250, taxable: true },

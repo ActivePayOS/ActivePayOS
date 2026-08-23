@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   BRS_AUTOMATIC_PCT,
   BRS_MAX_MATCH_PCT,
+  brsEligibilityAtServiceMonth,
   brsMatchPct,
   computeTspPacing,
 } from "@/lib/pay/tsp-pacing";
@@ -34,6 +35,20 @@ describe("brsMatchPct", () => {
     for (const p of [0, 0.01, 0.03, 0.04, 0.05, 0.1, 1]) {
       expect(BRS_AUTOMATIC_PCT + brsMatchPct(p)).toBeCloseTo(brsAgencyPct(p), 10);
     }
+  });
+});
+
+describe("brsEligibilityAtServiceMonth", () => {
+  it("starts automatic contributions after 60 days and matching in month 25", () => {
+    expect(brsEligibilityAtServiceMonth(1)).toEqual({ automatic: false, matching: false });
+    expect(brsEligibilityAtServiceMonth(2)).toEqual({ automatic: true, matching: false });
+    expect(brsEligibilityAtServiceMonth(23)).toEqual({ automatic: true, matching: false });
+    expect(brsEligibilityAtServiceMonth(24)).toEqual({ automatic: true, matching: true });
+  });
+
+  it("includes the month reaching 26 YOS, then stops government contributions", () => {
+    expect(brsEligibilityAtServiceMonth(312)).toEqual({ automatic: true, matching: true });
+    expect(brsEligibilityAtServiceMonth(313)).toEqual({ automatic: false, matching: false });
   });
 });
 

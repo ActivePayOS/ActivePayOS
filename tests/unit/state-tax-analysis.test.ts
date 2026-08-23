@@ -21,6 +21,24 @@ describe("analyzeStationScenario", () => {
     expect(a.suggestedRatePct).toBe(0);
   });
 
+  it("treats Wisconsin qualifying active-duty pay as broadly deductible", () => {
+    const a = analyzeStationScenario("Wisconsin", "Wisconsin")!;
+    expect(a.outcome).toBe("exempt_everywhere");
+    expect(a.suggestedRatePct).toBe(0);
+    expect(a.homeCtx.militaryTaxUrl).toMatch(/revenue\.wi\.gov/);
+  });
+
+  it("uses published 2026 planning rates for North Carolina and Mississippi", () => {
+    expect(analyzeStationScenario("North Carolina", "North Carolina")!.suggestedRatePct).toBe(3.99);
+    expect(analyzeStationScenario("Mississippi", "Mississippi")!.suggestedRatePct).toBe(4);
+  });
+
+  it("surfaces West Virginia's conditional 30-day rule when stationed away", () => {
+    const a = analyzeStationScenario("West Virginia", "Texas")!;
+    expect(a.outcome).toBe("conditional_relief");
+    expect(a.conditions).toMatch(/30 days/);
+  });
+
   it("California resident stationed outside CA gets nonresident treatment at 0%", () => {
     const a = analyzeStationScenario("California", "Massachusetts")!;
     expect(a.outcome).toBe("relief_stationed_outside");

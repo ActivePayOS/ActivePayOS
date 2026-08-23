@@ -32,6 +32,8 @@ export type StateTaxContext = {
   summary: string;
   planningNotes: string[];
   stateTaxAgencyUrl: string;
+  militaryTaxUrl?: string;
+  reviewedTaxYear: number;
   /**
    * Rough planning-level effective rate (percent) the Pay Calculator suggests
    * for the take-home estimate when this state is picked. 0 for no-tax states
@@ -61,6 +63,7 @@ const activeDutyPayGenerallyExempt = new Set([
   "New Mexico",
   "North Dakota",
   "Oklahoma",
+  "Wisconsin",
 ]);
 
 // Rough effective rates (percent of taxable military wages) for the remaining
@@ -83,11 +86,11 @@ const approxEffectiveRatePct: Record<string, number> = {
   Maine: 5.0,
   Maryland: 4.75,
   Massachusetts: 5.0,
-  Mississippi: 4.4,
+  Mississippi: 4.0,
   Nebraska: 4.5,
   "New Jersey": 3.5,
   "New York": 5.0,
-  "North Carolina": 4.25,
+  "North Carolina": 3.99,
   Ohio: 2.75,
   Oregon: 8.0,
   Pennsylvania: 3.07,
@@ -97,7 +100,6 @@ const approxEffectiveRatePct: Record<string, number> = {
   Vermont: 4.5,
   Virginia: 5.0,
   "West Virginia": 4.5,
-  Wisconsin: 4.5,
 };
 
 // States that relieve tax on a RESIDENT's active-duty pay when the member is
@@ -198,6 +200,23 @@ const stationedOutsideReliefByState: Record<string, StationedOutsideRelief> = {
     conditions:
       "A Colorado-domiciled member stationed outside the 50 states for at least 305 days of the year may elect to file as a nonresident. Being stationed in another U.S. state gives no relief.",
   },
+  "West Virginia": {
+    kind: "conditional_nonresident",
+    reliefRatePct: 0,
+    headline: "Nonresident treatment may apply under the 30-day test",
+    conditions:
+      "A West Virginia domiciliary on active duty may qualify for nonresident treatment when present in West Virginia for no more than 30 days during the tax year. Confirm the current domicile and filing requirements before using 0%.",
+  },
+};
+
+const militaryTaxUrls: Record<string, string> = {
+  Alabama: "https://www.revenue.alabama.gov/faqs/i-am-in-the-military-and-a-legal-resident-of-alabama-but-i-do-not-live-in-alabama-do-i-have-to-pay-alabama-income-tax/",
+  Massachusetts: "https://www.mass.gov/info-details/ma-tax-information-for-military-personnel-and-their-spouses",
+  Mississippi: "https://www.dor.ms.gov/general-information",
+  "North Carolina": "https://www.ncdor.gov/taxes-forms/individual-income-tax/tax-rate-schedules",
+  Virginia: "https://www.tax.virginia.gov/subtractions",
+  "West Virginia": "https://tax.wv.gov/Individuals/FrequentlyAskedQuestions/Pages/IndividualsFrequentlyAskedQuestions.aspx",
+  Wisconsin: "https://www.revenue.wi.gov/pages/faqs/pcs-military.aspx",
 };
 
 const noBroadWageIncomeTax = new Set([
@@ -357,7 +376,13 @@ export const stateTaxContexts: StateTaxContext[] = [
       : adExempt
       ? `${state} broadly exempts or fully deducts active-duty military pay for residents, so many members owe little or no ${state} tax on military wages. Confirm the current rules and your situation — effective dates and conditions vary.`
       : `${state} has state-specific income tax rules. Military pay treatment can depend on legal residence, duty location, spouse choices, other income, and state instructions — treat any rate here as a rough planning number.`,
-    planningNotes: hasNoBroadWageIncomeTax
+    planningNotes: state === "Virginia"
+      ? [
+          "Virginia may allow an active-duty basic-pay subtraction of up to $15,000 after 90 or more days of active duty; it phases out dollar-for-dollar from $15,000 to $30,000 of basic pay.",
+          "This flat planning rate does not calculate that subtraction, deductions, credits, spouse income, or other Virginia-specific return items.",
+          "Check your LES state of legal residence and state withholding fields.",
+        ]
+      : hasNoBroadWageIncomeTax
       ? [
           "Check your LES state tax fields and myPay withholding settings anyway.",
           "Federal rules generally protect active-duty military pay from taxation by a duty-station state when you are there only because of orders.",
@@ -377,6 +402,8 @@ export const stateTaxContexts: StateTaxContext[] = [
           "Other income, bonuses, rental income, civilian work, and local taxes may follow different rules.",
         ],
     stateTaxAgencyUrl: stateTaxAgencyUrls[state],
+    militaryTaxUrl: militaryTaxUrls[state],
+    reviewedTaxYear: 2026,
     stationedOutsideRelief: stationedOutsideReliefByState[state],
     suggestedRatePct,
     rateBlurb: hasNoBroadWageIncomeTax
